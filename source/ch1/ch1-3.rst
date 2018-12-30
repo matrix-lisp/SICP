@@ -1,2 +1,1004 @@
 1.3 用高阶函数做抽象
 =========================
+
+为了拓展建立抽象的能力, 需要建立这样的过程：以过程为参数或以过程作为返回值。这类能操作过程的过程成为 **高阶过程** 。
+
+1.3.1 过程作为参数
+----------------------
+
+计算从 a 到 b 的各个整数之和:
+
+.. code-block:: scheme
+
+  (define (sum-integers a b)
+    (if (> a b)
+        0
+        (+ a (sum-integers (+ a 1) b))))
+
+计算从 a 到 b 的各个整数的立方之和:
+
+.. code-block:: scheme
+
+  (define (cube x) (* x x x))
+  (define (sum-cubes a b)
+    (if (> a b)
+        0
+        (+ (cube a) (sum-cubes (+ a 1) b))))
+
+计算序列 :math:`\frac{1}{1 \cdot 3} + \frac{1}{5 \cdot 7} + \frac{1}{9 \cdot 11} + ...` 之和:
+
+.. code-block:: scheme
+
+  (define (pi-sum a b)
+    (if (> a b)
+        0
+        (+ (/ 1.0 (* a (+ a 2))) (pi-sum (+ a 4) b))))
+
+求和过程的抽象表达:
+
+.. code-block:: scheme
+
+  (define (sum term a next b)
+    (if (> a b)
+        0
+        (+ (term a)
+           (sum term (next a) next b))))
+
+此时只需要针对不同的计算过程实现 `term` 和 `next` 即可, 以上三个求和过程可简化为:
+
+.. code-block:: scheme
+
+  ;; 最简单的 next - 递增
+  (define (inc n) (+ n 1))
+
+  ;; 最简单的 term - 恒等
+  (define (identity x) x)
+
+  ;; 整数求和
+  (define (sum-integers a b)
+    (sum identity a inc b))
+
+  ;; 整数求立方和
+  (define (sum-cubes a b)
+    (sum cube a inc b))
+
+  ;; 序列求和
+  (define (pi-sum a b)
+    (define (pi-term x)
+      (/ 1.0 (* x (+ x 2))))
+    (define (pi-next x)
+      (+ x 4))
+    (sum pi-term a pi-next b))
+
+求解函数 f 在范围 a 与 b 之间的定积分近似值的公式:
+
+:math:`\int_{a}^{b} f = \lceil f \left( a + \frac{dx}{2} \right) + f \left( a + dx + \frac{dx}{2} \right) + f \left( a + 2dx + \frac{dx}{2} \right) + ... \rceil dx`
+
+同样基于通用的抽象过程 `sum` 实现:
+
+.. code-block:: scheme
+
+  (define (integral f a b dx)
+    (define (add-dx x) (+ x dx))
+    (* (sum f (+ a (/ dx 2.0)) add-dx b) dx))
+
+
+*练习 1.29*
+---------------
+
+基于辛普森规则实现如下过程:
+
+.. code-block:: scheme
+
+  (define (simpson f a b n)
+    (define (add-kh k) (* k (/ (- b a) n)))
+    (define (inc n) (+ n 1))
+    (define (term k)
+      (cond ((= k 0) (f a))
+            ((= k n) (f b))
+            ((= (remainder k 2) 0) (* 2.0 (f (+ a (add-kh k)))))
+            (else (* 4.0 (f (+ a (add-kh k)))))))
+    (* (/ (/ (- b a) n) 3)
+       (sum term 0 inc n)))
+
+::
+
+  > (integral cube 0 1 0.01)
+  0.24998750000000042
+  > (simpson cube 0 1 100)
+  0.24999999999999992
+  > (integral cube 0 1 0.001)
+  0.249999875000001
+  > (simpson cube 0 1 1000)
+  0.2500000000000002
+
+可以看到基于辛普森规则得到的结果精度要高于 `integral` 过程的结果。
+
+*练习 1.30*
+----------------
+
+`sum` 的迭代实现
+
+.. code-block:: scheme
+
+  (define (sum term a next b)
+    (define (iter a result)
+       (if (> a b)
+           result
+           (iter (next a) (+ (term a) result))))
+    (iter a 0))
+
+*练习 1.31*
+--------------
+
+a)
+
+参照 `sum` 的递归实现, 可以很快写出 `product` 的递归实现
+
+.. code-block:: scheme
+
+  (define (product term a next b)
+    (if (> a b)
+        1
+        (* (term a)
+           (product term (next a) next b))))
+
+并根据 `product` 实现阶乘
+
+.. code-block:: scheme
+
+  (define (factorial n)
+    (define (term x) x)
+    (define (next x) (+ x 1))
+    (product term 1 next n))
+
+求 :math:`\pi` 的近似值
+
+.. code-block:: scheme
+
+  (define (pi-prod a b)
+    (define (pi-term x)
+      (* (/ (* 2.0 x)
+            (+ (* 2 x) 1))
+         (/ (* 2.0 (+ x 1))
+            (+ (* 2 x) 1))))
+    (define (pi-next x) (+ x 1))
+    (product pi-term a pi-next b))
+
+b)
+
+`product` 的迭代实现
+
+.. code-block:: scheme
+
+  (define (product term a next b)
+    (define (iter a result)
+      (if (> a b)
+          result
+          (iter (next a) (* (term a) result))))
+    (iter a 1))
+
+*练习 1.32*
+----------------
+
+a)
+
+`accumulate` 过程实现如下
+
+.. code-block:: scheme
+
+  (define (accumulate combiner null-value term a next b)
+    (if (> a b)
+        null-value
+        (combiner (term a)
+                  (accumulate combiner null-value term (next a) next b))))
+
+基于 `accumulate` 过程实现 `sum` 和 `product`
+
+.. code-block:: scheme
+
+  (define (sum term a next b)
+    (accumulate + 0 term a next b))
+
+  (define (product term a next b)
+    (accumulate * 1 term a next b))
+
+b)
+
+前面 `accumulate` 基于递归实现, 现在改成迭代实现
+
+.. code-block:: scheme
+
+  (define (accumulate combiner null-value term a next b)
+    (define (iter a result)
+      (if (> a b)
+          result
+          (iter (next a) (combiner (term a) result))))
+    (iter a null-value))
+
+*练习 1.33*
+----------------
+
+`filtered-accumulate` 过程的实现
+
+.. code-block:: scheme
+
+  (define (filtered-accumulate combiner null-value term a next b filter?)
+    (define (iter a result)
+      (if (filter? a)
+          (if (> a b)
+              result
+              (iter (next a) (combiner (term a) result)))
+          (iter (next a) (combiner null-value result))))
+    (iter a null-value))
+
+a)
+
+.. code-block:: scheme
+
+  (define (sum-prime a b)
+    (define (inc n) (+ n 1))
+    (define (identity x) x)
+    (filtered-accumulate + 0 identity a inc b prime?))
+
+b)
+
+.. code-block:: scheme
+
+  (define (pro-gcd i n)
+    (define (inc n) (+ n 1))
+    (define (identity x) x)
+    (filtered-accumulate * 1 identity i inc n gcd?))
+
+1.3.2 用 lambda 构造过程
+-------------------------
+
+使用 `lambda` 实现匿名过程的构建
+
+.. code-block:: scheme
+
+  (define (plus4 x) (+ x 4))
+  (define plus4 (lambda (x) (+ x 4)))
+
+**使用 let 创建局部变量**
+
+`let` 表达式的一般形式是:
+
+::
+
+  (let ((<var1> <exp1>)
+        (<var2> <exp2>)
+        ...
+        (<varn> <expn>))
+    <body>)
+
+可以将它读作:
+
+::
+
+  令
+    <var1> 具有值 <exp1> 而且
+    <var2> 具有值 <exp2> 而且
+    ...
+    <varn> 具有值 <expn>
+  在 <body> 中
+
+*练习 1.34*
+-------------
+
+对于过程
+
+.. code-block:: scheme
+
+  (define (f g)
+    (g 2))
+
+当求解 `(f f)` 时, 可逐步展开求解过程
+
+::
+
+  (f f)
+  -->
+  (f (lambda (g)
+       (g 2)))
+  -->
+  ((lambda (g)
+     (g 2))
+   (lambda (g)
+     (g 2)))
+  -->
+  ((lambda (g)
+    (g 2))
+   2)
+  -->
+  (2 2)
+
+即调用 `(f f)` 最后将得到对 `(2 2)` 的调用, 而 `2` 并不是一个函数, 因此会执行出错。
+
+::
+
+  > (f f)
+
+  Exception: attempt to apply non-procedure 2
+  Type (debug) to enter the debugger.
+
+1.3.3 过程作为一般性的方法
+--------------------------------
+
+**通过区间折半寻找方程的根**
+
+.. code-block:: scheme
+
+  (define (close-enough? x y)
+    (< (abs (- x y)) 0.001))
+
+  (define (search f neg-point pos-point)
+    (let ((midpoint
+           (average neg-point pos-point)))
+      (if (close-enough? neg-point pos-point)
+          midpoint
+          (let ((test-value (f midpoint)))
+            (cond
+             ((positive? test-value)
+              (search f neg-point midpoint))
+             ((negative? test-value)
+              (search f midpoint pos-point))
+             (else midpoint))))))
+
+  (define (half-interval-method f a b)
+    (let ((a-value (f a))
+          (b-value (f b)))
+      (cond ((and (negative? a-value)
+                  (positive? b-value))
+             (search f a b))
+            ((and (negative? b-value)
+                  (positive? a-value))
+             (search f b a))
+            (else
+             (error "Values are not of opposite sign" a b)))))
+
+验证效果
+
+::
+
+  > (half-interval-method sin 2.0 4.0)
+  3.14111328125
+  > (half-interval-method (lambda (x) (- (* x x x) (* 2 x) 3)) 1.0 2.0)
+  1.89306640625
+
+**找出函数的不动点**
+
+如果 `x` 满足方程 :math:`f(x) = x`, 则 `x` 称为函数 `f` 的不动点。
+
+反复应用 `f` 以寻找不动点的实现
+
+.. code-block:: scheme
+
+  (define tolerance 0.00001)
+  (define (fixed-point f first-guess)
+    (define (close-enough? v1 v2)
+      (< (abs (- v1 v2))
+         tolerance))
+    (define (try guess)
+      (let ((next (f guess)))
+        (if (close-enough? guess next)
+            next
+            (try next))))
+    (try first-guess))
+
+验证效果
+
+::
+
+  > (fixed-point cos 1.0)
+  0.7390822985224023
+  > (fixed-point (lambda (y) (+ (sin y) (cos y))) 1.0)
+  1.2587315962971173
+
+将求解平方根的过程改由寻找不动点的过程来实现
+
+.. code-block:: scheme
+
+  (define (sqrt x)
+    (fixed-point (lambda (y) (average y (/ x y))) 1.0))
+
+验证效果
+
+::
+
+  > (sqrt 9.0)
+  3.0
+  > (sqrt 8.0)
+  2.82842712474619
+
+这种取逼近一个解的一系列值的平均值的方法, 称为平均阻尼技术, 长用在不动点搜寻中作为帮助收敛的手段。
+
+*练习 1.35*
+------------------
+
+对于黄金分隔率 :math:`{\phi}^2 = \phi + 1`, 有 :math:`\phi = 1 + \frac{1}{\phi}`
+
+则根据过程 `fixed-point` 可构造计算 :math:`\phi` 的过程为:
+
+.. code-block:: scheme
+
+  (define golden-ratio (fixed-point (lambda (x) (+ 1 (/ 1 x))) 1.0))
+
+验证效果
+
+::
+
+  > golden-ratio
+  1.6180327868852458
+
+*练习 1.36*
+--------------
+
+.. code-block:: scheme
+
+  (define tolerance 0.00001)
+  (define (fixed-point f first-guess)
+    (define (close-enough? n v1 v2)
+      (and (report n v1) (< (abs (- v1 v2)) tolerance)))
+    (define (report n v)
+      (display n)
+      (display ". *** ")
+      (display v)
+      (newline))
+    (define (try guess n)
+      (let ((next (f guess)))
+        (if (close-enough? n guess next)
+          next
+          (try next (+ n 1)))))
+    (try first-guess 1))
+
+不使用平均阻尼的效果:
+
+::
+
+  > (fixed-point (lambda (x) (/ (log 1000) (log x))) 2.0)
+  1. *** 2.0
+  2. *** 9.965784284662087
+  3. *** 3.004472209841214
+  4. *** 6.279195757507157
+  5. *** 3.759850702401539
+  6. *** 5.215843784925895
+  7. *** 4.182207192401397
+  8. *** 4.8277650983445906
+  9. *** 4.387593384662677
+  10. *** 4.671250085763899
+  11. *** 4.481403616895052
+  12. *** 4.6053657460929
+  13. *** 4.5230849678718865
+  14. *** 4.577114682047341
+  15. *** 4.541382480151454
+  16. *** 4.564903245230833
+  17. *** 4.549372679303342
+  18. *** 4.559606491913287
+  19. *** 4.552853875788271
+  20. *** 4.557305529748263
+  21. *** 4.554369064436181
+  22. *** 4.556305311532999
+  23. *** 4.555028263573554
+  24. *** 4.555870396702851
+  25. *** 4.555315001192079
+  26. *** 4.5556812635433275
+  27. *** 4.555439715736846
+  28. *** 4.555599009998291
+  29. *** 4.555493957531389
+  30. *** 4.555563237292884
+  31. *** 4.555517548417651
+  32. *** 4.555547679306398
+  33. *** 4.555527808516254
+  34. *** 4.555540912917957
+  4.555532270803653
+
+使用平均阻尼的效果:
+
+::
+
+  > (fixed-point (lambda (x) (average x (/ (log 1000) (log x)))) 2.0)
+  1. *** 2.0
+  2. *** 5.9828921423310435
+  3. *** 4.922168721308343
+  4. *** 4.628224318195455
+  5. *** 4.568346513136242
+  6. *** 4.5577305909237005
+  7. *** 4.555909809045131
+  8. *** 4.555599411610624
+  9. *** 4.5555465521473675
+  4.555537551999825
+
+可见使用平均阻尼能够大大提供计算的速度。
+
+*练习 1.37*
+---------------
+
+根据连分式的定义可以实现其递归过程的实现:
+
+.. code-block:: scheme
+
+  (define (cont-frac N D k)
+    (define (loop i)
+      (if (= k i)
+          (/ (N i) (D i))
+          (/ (N i)
+             (+ (D i) (loop (+ i 1))))))
+    (loop 1))
+
+
+根据此过程验证当 :math:`N_i` 和 :math:`D_i` 都等于 1 时, 无穷分式将趋近于 :math:`\frac{1}{\phi}`
+
+::
+
+  > (cont-frac (lambda (i) 1.0) (lambda (i) 1.0) 1)
+  1.0
+  > (cont-frac (lambda (i) 1.0) (lambda (i) 1.0) 2)
+  0.5
+  > (cont-frac (lambda (i) 1.0) (lambda (i) 1.0) 3)
+  0.6666666666666666
+  > (cont-frac (lambda (i) 1.0) (lambda (i) 1.0) 4)
+  0.6000000000000001
+  > (cont-frac (lambda (i) 1.0) (lambda (i) 1.0) 5)
+  0.625
+  > (cont-frac (lambda (i) 1.0) (lambda (i) 1.0) 6)
+  0.6153846153846154
+  > (cont-frac (lambda (i) 1.0) (lambda (i) 1.0) 7)
+  0.6190476190476191
+  > (cont-frac (lambda (i) 1.0) (lambda (i) 1.0) 8)
+  0.6176470588235294
+  > (cont-frac (lambda (i) 1.0) (lambda (i) 1.0) 9)
+  0.6181818181818182
+  > (cont-frac (lambda (i) 1.0) (lambda (i) 1.0) 10)
+  0.6179775280898876
+  > (cont-frac (lambda (i) 1.0) (lambda (i) 1.0) 11)
+  0.6180555555555556
+
+即当 `k` 取 11 时可达到 4 位精度。
+
+再实现其迭代过程
+
+.. code-block:: scheme
+
+  (define (cont-frac N D k)
+    (define (cont-frac-iter i v)
+      (if (= i 0)
+          v
+          (cont-frac-iter (- i 1)
+                          (/ (* 1.0 (N i))
+                             (+ (D i) v)))))
+    (cont-frac-iter (- k 1) (/ (N k) (D k))))
+
+*练习 1.38*
+-------------
+
+这里主要是实现 :math:`D_i`
+
+.. code-block:: scheme
+
+  (define (d-euler i)
+    (if (= (remainder (+ i 1) 3) 0)
+        (* 2 (/ (+ i 1) 3))
+        1))
+
+然后直接套用过程 `cont-frac` 即可
+
+::
+
+  > (+ 2.0 (cont-frac (lambda (i) 1.0) d-euler 4))
+  2.7142857142857144
+
+*练习 1.39*
+---------------
+
+根据 `Lambert公式` 可得
+
+.. code-block:: scheme
+
+  (define (tan-cf x k)
+    (define (N i)
+      (if (= i 1)
+          x
+          (- (* x x))))
+    (define (D i)
+      (- (* 2 i) 1))
+    (cont-frac N D k))
+
+使用系统自带的 `tan` 函数进行验证
+
+::
+
+  > (tan 10)
+  0.6483608274590867
+  > (tan-cf 10 100)
+  0.6483608274590866
+
+
+1.3.4 过程作为返回值
+----------------------
+
+平均阻尼过程的实现
+
+.. code-block:: scheme
+
+  (define (average-damp f)
+    (lambda (x) (average x (f x))))
+
+根据以上实现重新定义求解平方根的过程
+
+.. code-block:: scheme
+
+  (define (sqrt x)
+    (fixed-point (average-damp (lambda (y) (/ x y)))
+                 1.0))
+
+在这里将求解平方根的过程视为一个寻找不动点的过程 `fixed-point`, 即为寻找 :math:`y^2 = x` 的不动点, 而为了提供效率快速收敛, 需要对函数做平均阻尼处理。这样就把不动点、平均阻尼、函数转换组合在一起构成了强大的抽象能力。比如, 使用相同的方式即可轻松实现求解立方根的过程。
+
+.. code-block:: scheme
+
+  (define (cube-root x)
+    (fixed-point (average-damp (lambda (y) (/ x (square y))))
+                 1.0))
+
+
+**牛顿法**
+
+如果 :math:`x \mapsto g(x)` 是一个可微函数, 那么方程 :math:`g(x) = 0` 的一个解就是函数 :math:`x \mapsto f(x)` 的一个不动点。其中
+
+:math:`f(x) = x - \frac{g(x)}{Dg(x)}`
+
+其中 :math:`Dg(x)` 是 :math:`g` 对 :math:`x` 的导数。
+
+根据导数的定义, 可得
+
+:math:`Dg(x) = \frac{g(x + dx) - g(x)}{dx}`
+
+因此可以实现求导过程为
+
+.. code-block:: scheme
+
+  (define dx 0.00001)
+  (define (deriv g)
+    (lambda (x)
+      (/ (- (g (+ x dx)) (g x))
+         dx)))
+
+然后用它来对 :math:`x \mapsto x^3` 进行求导
+
+::
+
+  > ((deriv (lambda (x) (* x x x))) 5)
+  75.00014999664018
+
+验证正确后将牛顿法转换为求解不动点的过程
+
+.. code-block:: scheme
+
+  (define (newton-transform g)
+    (lambda (x)
+      (- x (/ (g x) ((deriv g) x)))))
+
+  (define (newtons-method g guess)
+    (fixed-point (newton-transform g) guess))
+
+此时则可将求解平方根看成是寻找 :math:`y \mapsto y^2 - x` 的零点, 因此可得如下过程
+
+.. code-block:: scheme
+
+  (define (sqrt x)
+    (newtons-method (lambda (y) (- (square y) x)) 1.0))
+
+**抽象和第一级过程**
+
+由上面两个过程可以看到它们使用了类似的结构, 本质上都是不动点的计算过程, 只不过为寻找不动点进行的函数转换并不相同, 因此将其进一步抽象为如下过程
+
+.. code-block:: scheme
+
+  (define (fixed-point-of-transform g transform guess)
+    (fixed-point (transform g) guess))
+
+基于此过程则可将基于平均阻尼和基于牛顿法的求解平方根过程分别实现为
+
+.. code-block:: scheme
+
+  (define (sqrt x)
+    (fixed-point-of-transform (lambda (y) (/ x y))
+                              average-damp
+                              1.0))
+
+  (define (sqrt x)
+    (fixed-point-of-transform (lambda (y) (- (square y) x))
+                              newtons-transform
+                              1.0))
+
+由此可见, 在更高层次对过程进行抽象, 识别程序中的基本过程并进行组合, 即可构造出功能更加强大的抽象, 可以进一步减少代码冗余。
+
+*练习 1.40*
+--------------
+
+.. code-block:: scheme
+
+  (define (cube x)
+    (* x x x))
+
+  (define (cubic a b c)
+    (lambda (x)
+      (+ (cube x) (* a (square x)) (* b x) c)))
+
+测试验证
+
+::
+
+  > (newtons-method (cubic 1.0 1.0 -3.0) 1.0)
+  1.0
+
+*练习 1.41*
+--------------
+
+.. code-block:: scheme
+
+  (define (double f)
+    (lambda (x)
+      (f (f x))))
+
+  (define (inc x)
+    (+ x 1))
+
+测试验证
+
+::
+
+  > (((double (double double)) inc) 5)
+  21
+
+*练习 1.42*
+-----------------
+
+.. code-block:: scheme
+
+  (define (compose f g)
+    (lambda (x)
+      (f (g x))))
+
+测试验证
+
+::
+
+  > ((compose square inc) 6)
+  49
+
+*练习 1.43*
+------------------
+
+.. code-block:: scheme
+
+  (define (repeated f n)
+    (cond ((= n 1) f)
+          ((even? n) (repeated (compose f f) (/ n 2)))
+          (else (compose f (repeated f (- n 1))))))
+
+测试验证
+
+::
+
+  > ((repeated square 2) 5)
+  625
+
+*练习 1.44*
+-------------
+
+.. code-block:: scheme
+
+  (define (smooth f)
+    (lambda (x)
+      (/ (+ (f (- x dx))
+            (f x)
+            (f (+ x dx)))
+         3)))
+
+  (define (smooth-n f n)
+    ((repeated smooth n) f))
+
+测试验证
+
+::
+
+  > ((smooth-n square 10) 5)
+  25
+
+*练习 1.45*
+------------
+
+因为需要基于 :math:`y \mapsto x/y^{n-1}` 反复做平均阻尼的不动点搜寻, 因此首先构建这个过程, 这里基于上面的 `repeated` 重新实现 `expt`
+
+.. code-block:: scheme
+
+  (define (expt base n)
+    (if (= n 0)
+        1
+        ((repeated (lambda (x) (* base x)) n) 1)))
+
+再仿照上题中的 `smooth-n` 实现对某个过程做多次平均阻尼转换
+
+.. code-block:: scheme
+
+  (define (average-damp-n f n)
+    ((repeated average-damp n) f))
+
+基于上面两个过程实现对 `n` 次方根的求解(做 `m` 次平均阻尼)
+
+.. code-block:: scheme
+
+  (define (find-root n m)
+    (lambda (x)
+      (fixed-point
+       (average-damp-n
+        (lambda (y) (/ x (expt y (- n 1))))
+        m)
+       1.0)))
+
+验证平方根、立方根、四次方根
+
+::
+
+  > ((find-root 2 1) 4)
+  1. *** 1.0
+  2. *** 2.5
+  3. *** 2.05
+  4. *** 2.000609756097561
+  5. *** 2.0000000929222947
+  2.000000000000002
+
+  > ((find-root 2 1) 9)
+  1. *** 1.0
+  2. *** 5.0
+  3. *** 3.4
+  4. *** 3.023529411764706
+  5. *** 3.00009155413138
+  6. *** 3.00000000139
+  3.0
+
+  > ((find-root 3 1) 8)
+  1. *** 1.0
+  2. *** 4.5
+  3. *** 2.447530864197531
+  4. *** 1.8914996576441667
+  5. *** 2.0637643832634476
+  6. *** 1.9710425766479744
+  7. *** 2.0151199754332096
+  8. *** 1.992609760395472
+  9. *** 2.0037362842809587
+  10. *** 1.998142301706526
+  11. *** 2.0009314406381735
+  12. *** 1.9995349299633447
+  13. *** 2.0002326972862416
+  14. *** 1.9998836919616
+  15. *** 2.0000581641656563
+  16. *** 1.999970920454376
+  17. *** 2.0000145404070393
+  18. *** 1.9999927299550464
+  19. *** 2.000003635062117
+  1.9999981824788517
+
+  > ((find-root 3 1) 27)
+  1. *** 1.0
+  2. *** 14.0
+  3. *** 7.0688775510204085
+  4. *** 3.804606118073623
+  5. *** 2.8349437604593346
+  6. *** 3.0972227433212662
+  7. *** 2.9559185053407466
+  8. *** 3.0230317274669494
+  9. *** 2.988746677335714
+  10. *** 3.0056902981459395
+  11. *** 2.9971709998261664
+  12. *** 3.0014185067452175
+  13. *** 2.999291752074178
+  14. *** 3.000354374849445
+  15. *** 2.9998228753561564
+  16. *** 3.0000885780097266
+  17. *** 2.999955714918014
+  18. *** 3.000022143521597
+  19. *** 2.999988928484367
+  20. *** 3.0000055358191062
+  2.9999972321057697
+
+  > ((find-root 4 2) 16)
+  1. *** 1.0
+  2. *** 4.75
+  3. *** 3.5998232249599065
+  4. *** 2.7856139316659103
+  5. *** 2.274263910561008
+  6. *** 2.045743730517053
+  7. *** 2.0015115314098866
+  8. *** 2.000001711389449
+  2.0000000000021965
+
+  > ((find-root 4 2) 81)
+  1. *** 1.0
+  2. *** 21.0
+  3. *** 15.752186588921283
+  4. *** 11.81932080918686
+  5. *** 8.876755039613878
+  6. *** 6.6865171965208905
+  7. *** 5.082624768192104
+  8. *** 3.966195743486564
+  9. *** 3.2992124877307853
+  10. *** 3.0382990701981023
+  11. *** 3.000718098021805
+  12. *** 3.000000257729561
+  3.000000000000033
+
+继续验证其它, 发现如下规律
+
+==========================  ==== ==== ==== ==== ==== ==== ==== ==== ==== ==== ==== ==== ==== ====
+ n 次方根                    2    3    4    5    6    7    8   ...   15   16  ...   31   32  ...
+==========================  ==== ==== ==== ==== ==== ==== ==== ==== ==== ==== ==== ==== ==== ====
+ m 次平均阻尼                1    1    2    2    2    2    3   ...   3    4   ...   4    5   ...
+==========================  ==== ==== ==== ==== ==== ==== ==== ==== ==== ==== ==== ==== ==== ====
+
+即要求得 `n` 次方根, 则至少需要经过 :math:`\lg n` 次平均阻尼
+
+则可将原有过程修改为
+
+.. code-block:: scheme
+
+  (define (find-root n)
+    (lambda (x)
+      (fixed-point
+       (average-damp-n
+        (lambda (y) (/ x (expt y (- n 1))))
+        (truncate (log n 2)))
+       1.0)))
+
+即将原来的参数 `m` 修改为 `(truncate (log n 2)` 即可实现对 `n` 次方根的求解
+
+*练习 1.46*
+----------------
+
+实现 `iterative-improve` 过程
+
+.. code-block:: scheme
+
+  (define (iterative-improve good-enough? improve)
+    (define (iter guess)
+      (if (good-enough? guess)
+          (improve guess)
+          (iter (improve guess))))
+    (lambda (guess) (iter guess)))
+
+根据 `iterative-improve` 过程对 `sqrt` 重新实现
+
+.. code-block:: scheme
+
+  (define (sqrt x)
+    (define (good-enough? guess)
+      (< (abs (- (square guess) x)) tolerance))
+    (define (improve guess)
+      (average guess (/ x guess)))
+    ((iterative-improve good-enough? improve) 1.0))
+
+测试验证
+
+::
+
+  > (sqrt 9)
+  3.0
+
+根据 `iterative-improve` 过程对 `fixed-point` 重新实现
+
+.. code-block:: scheme
+
+  (define (fixed-point f)
+    (define (good-enough? guess)
+      (< (abs (- guess (f guess))) tolerance))
+    (define (improve guess)
+      (f guess))
+    ((iterative-improve good-enough? improve) 1.0))
+
+测试验证
+
+::
+
+  > (fixed-point cos)
+  0.7390822985224023

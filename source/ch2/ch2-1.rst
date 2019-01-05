@@ -1,2 +1,679 @@
 2.1 数据抽象导引
 ===================
+
+数据抽象使得我们能够将一个复合数据对象的使用, 与该数据对象怎样由更基本的数据对象构造起来的细节隔离开。
+
+
+*2.1.1 实例: 有理数的算术运算*
+-------------------------------
+
+根据有理数的规则实现加减乘除和相等判断
+
+.. code-block:: scheme
+
+  (define (add-rat x y)
+    (make-rat (+ (* (number x) (denom y))
+                 (* (number y) (denom x)))
+              (* (denom x) (denom y))))
+
+  (define (sub-rat x y)
+    (make-rat (- (* (number x) (denom y))
+                 (* (number y) (denom x)))
+              (* (denom x) (denom y))))
+
+  (define (mul-rat x y)
+    (make-rat (* (number x) (number y))
+              (* (denom x) (denom y))))
+
+  (define (div-rat x y)
+    (make-rat (* (number x) (denom y))
+              (* (denom x) (number y))))
+
+  (define (equal-rat? x y)
+    (= (* (number x) (denom y))
+       (* (number y) (denom x))))
+
+**序对**
+
+通过 `cons` 作为构造任意复杂数据结构的通用基本构件。
+
+::
+
+  > (define x (cons 1 2))
+  > (car x)
+  1
+  > (cdr x)
+  2
+
+**有理数的表示**
+
+通过 `cons` 实现有理数的基本过程
+
+.. code-block:: scheme
+
+  (define (make-rat n d) (cons n d))
+  (define (number x) (car x))
+  (define (denom x) (cdr x))
+
+为了验证数据, 实现一个显示有理数结果的辅助过程
+
+.. code-block:: scheme
+
+  (define (print-rat x)
+    (display (number x))
+    (display "/")
+    (display (denom x))
+    (newline))
+
+测试验证
+
+::
+
+  > (define one-half (make-rat 1 2))
+  > (print-rat one-half)
+  1/2
+  > (define one-third (make-rat 1 3))
+  > (print-rat one-third)
+  1/3
+  > (print-rat (add-rat one-half one-third))
+  5/6
+  > (print-rat (mul-rat one-half one-third))
+  1/6
+  > (print-rat (add-rat one-third one-third))
+  6/9
+
+对于未化简的情况, 基于 `gcd` 重新实现 `make-rat` 即可
+
+.. code-block:: scheme
+
+  (define (make-rat n d)
+    (let ((g (gcd n d)))
+      (cons (/ n g)
+            (/ d g))))
+
+再次验证
+
+::
+
+  > (print-rat (add-rat one-third one-third))
+  2/3
+
+*练习 2.1*
+-----------
+
+.. code-block:: scheme
+
+  ;; 处理有理数的负值情况
+  (define (make-rat n d)
+    (let ((g (gcd n d)))
+      (if (and (< d 0) (> g 0))
+          (cons (/ (- n) g) (/ (- d) g))
+          (cons (/ n g) (/ d g)))))
+
+*2.1.2 抽象屏障*
+--------------------
+
+对于一个有理数包而言, 应该提供关于有理数的各种基本操作(加减乘除), 作为有理数包的使用者-业务程序而言, 使用时并不需要了解有理数包的底层实现。而有理数的各种基本操作(加减乘除)的实现又依赖于有理数的构造函数和选择函数, 而这些函数又基于序对实现。因此通过一层层的抽象, 使得程序很容易维护和修改, 也将有助于程序的整体设计。
+
+*练习 2.2*
+-------------
+
+.. code-block:: scheme
+
+  ;; 仿照有理数的实现方式
+  ;; 实现线段
+  (define (make-segment start-point end-point)
+    (cons start-point end-point))
+  (define (start-segment segment)
+    (car segment))
+  (define (end-segment segment)
+    (cdr segment))
+
+  ;; 实现点
+  (define (make-point x y)
+    (cons x y))
+  (define (x-point p)
+    (car p))
+  (define (y-point p)
+    (cdr p))
+
+  ;; 打印点坐标
+  (define (print-point p)
+    (display "(")
+    (display (x-point p))
+    (display ", ")
+    (display (y-point p))
+    (display ")")
+    (newline))
+
+  ;; 实现取线段中点
+  (define (midpoint-segment segment)
+    (let ((start (start-segment segment))
+          (end (end-segment segment)))
+      (make-point (average (x-point start)
+                           (x-point end))
+                  (average (y-point start)
+                           (y-point end)))))
+
+测试验证
+
+::
+
+  > (print-point (midpoint-segment (make-segment (make-point 1 3) (make-point 3 5))))
+  (2, 4)
+
+*练习 2.3*
+--------------
+
+.. code-block:: scheme
+
+  ;; 矩形的第一种实现: 两对相交的平行线段
+  (define (make-rectangle segment-l segment-r segment-u segment-d)
+    (cons (cons (segment-l segment-r))
+          (cons (segment-u segment-d))))
+
+  ;; 选择函数的实现, 这里需要基于线段的求解矩形的长和宽
+  (define (length-rectangle rectangle)
+    (segment-length (car (car rectangle))))
+  (define (width-rectangle rectangle)
+    (segment-length (car (cdr rectangle))))
+
+  ;; 线段的长度实际上就是两个点之间的距离
+  (define (segment-length segment)
+    (let ((start (start-segment segment))
+          (end (end-segment segment)))
+      (point-distance start end)))
+
+  ;; 在平面上两个点之间的距离即为坐标差平方和的平方根
+  (define (point-distance point1 point2)
+    (let ((x1 (x-point point1))
+          (x2 (x-point point2))
+          (y1 (y-point point1))
+          (y2 (y-point point2)))
+      (sqrt (+ (square (- x1 x2))
+               (square (- y1 y2))))))
+
+  ;; 有了上面的过程就可以构造求解矩形周长和面积的过程了
+  ;; 矩形的周长
+  (define (perimeter-rectangle rectangle)
+    (let ((length (length-rectangle rectangle))
+          (width (width-rectangle rectangle)))
+      (* 2 (+ length width))))
+
+  ;; 矩形的面积
+  (define (area-rectangle rectangle)
+    (let ((length (length-rectangle rectangle))
+          (width (width-rectangle rectangle)))
+      (* length width)))
+
+测试验证
+
+::
+
+  > (define x1 (make-point 0 3))
+  > (define y1 (make-point 2 3))
+  > (define x2 (make-point 0 0))
+  > (define y2 (make-point 2 0))
+  > (define sl (make-segment x1 x2))
+  > (define sr (make-segment y1 y2))
+  > (define su (make-segment x1 y1))
+  > (define sd (make-segment x2 y2))
+  > (define r (make-rectangle sl sr su sd))
+  > (perimeter-rectangle r)
+  10
+  > (area-rectangle r)
+  6
+
+然后更换一种矩形的实现
+
+.. code-block:: scheme
+
+  ;; 矩形的另一种实现, 因为垂直且平行, 所以用两个垂直的线段即可确定一个矩形
+  (define (make-rectangle segment-l segment-w)
+    (cons segment-l segment-w))
+  (define (length-rectangle rectangle)
+    (segment-length (car rectangle)))
+  (define (width-rectangle rectangle)
+    (segment-length (cdr rectangle)))
+
+用这种实现测试验证矩形的周长和面积
+
+::
+
+  > (define r (make-rectangle sl sd))
+  > (perimeter-rectangle r)
+  10
+  > (area-rectangle r)
+  6
+
+*2.1.3 数据意味着什么*
+----------------------
+
+数据可以被定义为一组满足特定条件的选择函数和构造函数。不仅仅是“高层”数据对象可以这样定义, 底层的对象, 如序对, 也可以这样定义。即使 `cons`, `car`, `cdr` 同样可以通过自定义的过程来实现。
+
+.. code-block:: scheme
+
+  (define (cons x y)
+    (define (dispatch m)
+      (cond ((= m 0) x)
+            ((= m 1) y)
+            (else
+             (error "Argument not 0 or 1: CONS" m))))
+    dispatch)
+
+  (define (car z) (z 0))
+  (define (cdr z) (z 1))
+
+*练习 2.4*
+-----------
+
+.. code-block:: scheme
+
+  (define (cons x y)
+    (lambda (m) (m x y)))
+
+  (define (car z)
+    (z (lambda (p q) p)))
+
+代换过程如下
+
+::
+
+  (car (cons x y))
+  ==> (car (lambda (m) (m x y)))
+  ==> ((lambda (m) (m x y)) (lambda (p q) p))
+  ==> ((lambda (p q) p) x y)
+  ==> x
+
+由此可得 `cdr` 的实现为
+
+.. code-block:: scheme
+
+  (define (cdr z)
+    (z (lambda (p q) q)))
+
+*练习 2.5*
+-------------
+
+实现序对
+
+.. code-block:: scheme
+
+  (define (cons a b)
+    (* (expt 2 a)
+       (expt 3 b)))
+
+对 `cons` 得到的结果不断除 `2` , 累加次数即为 `car`
+
+.. code-block:: scheme
+
+  (define (car x)
+    (if (= 0 (remainder x 2))
+        (+ 1 (car (/ x 2)))
+        0))
+
+对 `cons` 得到的结果不断除 `3` , 累加次数即为 `cdr`
+
+.. code-block:: scheme
+
+  (define (cdr x)
+    (if (= 0 (remainder x 3))
+        (+ 1 (cdr (/ x 3)))
+        0))
+
+*练习 2.6*
+---------------
+
+.. code-block:: scheme
+
+  (define zero (lambda (f) (lambda (x) x)))
+  (define (add-1 n)
+    (lambda (f) (lambda (x) (f ((n f) x)))))
+
+有了零的定义和加一的过程, 那么一就是以零为参数执行加一的过程
+
+::
+
+  (add-1 zero)
+  ==> (lambda (f) (lambda (x) (f ((zero f) x))))
+  ==> (lambda (f) (lambda (x) (f ((lambda (x) x) x))))
+  ==> (lambda (f) (lambda (x) (f x)))
+
+因此得到 `one` 的定义
+
+.. code-block:: scheme
+
+  (define one (lambda (f) (lambda (x) (f x))))
+
+以此类推, 得到 `two` 的定义
+
+.. code-block:: scheme
+
+  (define two (lambda (f) (lambda (x) (f (f x)))))
+
+代入验证
+
+::
+
+  (add-1 one)
+  ==> (lambda (f) (lambda (x) (f ((one f) x))))
+  ==> (lambda (f) (lambda (x) (f ((lambda (x) (f x)) x))))
+  ==> (lambda (f) (lambda (x) (f (f x))))
+
+然后推导加法的实现
+
+::
+
+  由 one, two 进而得到对于 N 的定义
+  ==> (define N (lambda (f) (lambda (x) (f (f ... (f x))))))
+  则可得到如下过程
+  ==> (define N (lambda (f) (lambda (x) ((N f) x))))
+  而对于 N+M, 即为对 N 调用 M 次 add-1
+  对于 N+1
+  (add-1 N)
+  ==> (lambda (f) (lambda (x) (f ((N f) x))))
+  ==> (lambda (f) (lambda (x) ((one f) ((N f) x))))
+
+  (add-1 (N+1))
+  ==> (lambda (f) (lambda (x) ((two f) ((N f) x))))
+
+  (add-1 (N+M))
+  ==> (lambda (f) (lambda (x) ((M f) ((N f) x))))
+
+所以推得加法的过程如下
+
+.. code-block:: scheme
+
+  (define (add N M)
+    (lambda (f) (lambda (x) ((N f) ((M f) x)))))
+
+测试验证
+
+::
+
+  (add one two)
+  ==> (lambda (f) (lambda (x) ((one f) ((two f) x))))
+  ==> (lambda (f) (lambda (x) (((lambda (f) (lambda (x) (f x))) f) ((two f) x))))
+  ==> (lambda (f) (lambda (x) (((lambda (x) (f x)) ((two f) x)))))
+  ==> (lambda (f) (lambda (x) (((lambda (x) (f x)) (((lambda (f) (lambda (x) (f (f x)))) f) x)))))
+  ==> (lambda (f) (lambda (x) (((lambda (x) (f x)) ((lambda (x) (f (f x))) x)))))
+  ==> (lambda (f) (lambda (x) (((lambda (x) (f x)) (f (f x))))))
+  ==> (lambda (f) (lambda (x) (f (f (f x)))))
+
+有关丘奇计数参见 `Church Numerals <https://en.wikipedia.org/wiki/Church_encoding#Computation_with_Church_numerals>`_
+
+*2.1.4 扩展练习: 区间算术*
+---------------------------
+
+.. code-block:: scheme
+
+  ;; 区间加法
+  (define (add-interval x y)
+    (make-interval (+ (lower-bound x) (lower-bound y))
+                   (+ (upper-bound x) (upper-bound y))))
+
+  ;; 区间乘法
+  (define (mul-interval x y)
+    (let ((p1 (* (lower-bound x) (lower-bound y)))
+          (p2 (* (lower-bound x) (upper-bound y)))
+          (p3 (* (upper-bound x) (lower-bound y)))
+          (p4 (* (upper-bound x) (upper-bound y))))
+      (make-interval (min p1 p2 p3 p4)
+                     (max p1 p2 p3 p4))))
+
+  ;; 区间除法
+  (define (div-interval x y)
+    (mul-interval x
+                  (make-interval (/ 1.0 (upper-bound y))
+                                 (/ 1.0 (lower-bound y)))))
+
+*练习 2.7*
+-------------
+
+.. code-block:: scheme
+
+  (define (make-interval a b) (cons a b))
+
+  ;; 根据区间的构造函数构造区间的选择函数
+  (define (lower-bound interval) (min (car interval) (cdr interval)))
+  (define (upper-bound interval) (max (car interval) (cdr interval)))
+
+
+*练习 2.8*
+--------------
+
+.. code-block:: scheme
+
+  ;; 区间差的过程
+  (define (sub-interval x y)
+    (make-interval (- (lower-bound x) (upper-bound y))
+                   (- (upper-bound x) (lower-bound y))))
+
+*练习 2.9*
+----------------
+
+给定两个区间 :math:`x = (a_{1}, b_{1})`, :math:`y = (a_{2}, b_{2})`
+
+根据区间宽度的定义有
+
+:math:`W_x = \frac{b_{1} - a_{1}}{2}`
+
+:math:`W_y = \frac{b_{2} - a_{2}}{2}`
+
+而两个区间的和为
+
+:math:`z = x + y`
+
+:math:`z = (a_{1} + a_{2}, b_{1} + b_{2})`
+
+则其宽度为
+
+:math:`W_z = \frac{b_{1} + b_{2} - a_{1} - a_{2}}{2}`
+
+:math:`W_z = \frac{b_{1} + a_{1}}{2} + \frac{b_{2} - a_{2}}{2}`
+
+:math:`W_z = W_x + W_y`
+
+即两个区间的和的宽度是被加的两个区间的宽度的函数。
+
+同理可证两个区间的差的宽度是被减的两个区间的宽度的函数。
+
+而对于乘
+
+:math:`z = x * y`
+
+:math:`z = (a_{1} * a_{2}, b_{1} * b_{2})`
+
+则其宽度为
+
+:math:`W_z = \frac{b_1 * b_2 - a_1 * a_2}{2}`
+
+与 :math:`W_x`, :math:`W_y` 并没有相关性
+
+*练习 2.10*
+----------------
+
+.. code-block:: scheme
+
+  ;; 当出现跨越 0 的区间时, 对其做除法, 取其倒数, 在 0 附近将分别得到负无穷和正无穷,因此需要规避此种情况
+  ;; 在除法中添加对区间是否跨越0的判断
+  (define (div-interval x y)
+    (if (and (< (lower-bound y) 0) (> (upper-bound y) 0))
+        (display "error interval")
+        (mul-interval x
+                      (make-interval (/ 1.0 (upper-bound y))
+                                     (/ 1.0 (lower-bound y))))))
+
+*练习 2.11*
+-------------
+
+.. code-block:: scheme
+
+  (define (mul-interval x y)
+    (let ((lx (lower-bound x))
+          (ux (upper-bound x))
+          (ly (lower-bound y))
+          (uy (upper-bound y)))
+      (cond ((and (< ux 0) (< uy 0))
+             (make-interval (* ux uy) (* lx ly)))
+            ((and (> lx 0) (> ly 0))
+             (make-interval (* lx ly) (* ux uy)))
+            ((and (> lx 0) (< uy 0))
+             (make-interval (* ux ly) (* lx uy)))
+            ((and (< ux 0) (> ly 0))
+             (make-interval (* lx uy) (* ux ly)))
+            ((and (> lx 0) (< ly 0) (> uy 0))
+             (make-interval (* ux ly) (* ux uy)))
+            ((and (> ly 0) (< lx 0) (> ux 0))
+             (make-interval (* uy lx) (* uy ux)))
+            ((and (< ux 0) (< ly 0) (> uy 0))
+             (make-interval (* lx uy) (* ux ly)))
+            ((and (< uy 0) (< lx 0) (> ux 0))
+             (make-interval (* ly ux) (* uy lx)))
+            ((and (< lx 0) (> ux 0) (< ly 0) (> uy 0))
+             (make-interval (min (* lx uy) (* ly ux))
+                            (max (* lx ly) (* ux uy)))))))
+
+  ;; 用于测试的辅助过程
+  (define (test-mul a1 b1 a2 b2)
+    (let ((x (make-interval a1 b1))
+          (y (make-interval a2 b2)))
+      (mul-interval x y)))
+
+测试验证
+
+::
+
+  > (test-mul 1 2 2 3)
+  (2 . 6)
+  > (test-mul 1 2 -3 -2)
+  (-6 . -2)
+  > (test-mul 1 2 -3 2)
+  (-6 . 4)
+  > (test-mul -2 1 -3 2)
+  (-4 . 6)
+
+*练习 2.12*
+---------------
+
+.. code-block:: scheme
+
+  ;; 实现构造函数
+  (define (make-center-percent c p)
+    (let ((pv (* c p 0.01)))
+      (make-interval (- c pv) (+ c pv))))
+
+  ;; 沿用 center
+  (define (center i)
+    (/ (+ (lower-bound i)
+          (upper-bound i))
+       2))
+
+  ;; 实现选择函数 percent
+  (define (percent i)
+    (* 100 (/ (- (upper-bound i)
+                 (lower-bound i))
+              (* 2 (center i)))))
+
+*练习 2.13*
+---------------
+
+设区间 `X` 的误差为 :math:`P_{x}`, 区间 `Y` 的误差为 :math:`P_{y}`, 则有
+
+:math:`(X \pm P_{x})`, :math:`(Y \pm P_{y})`
+
+设 :math:`\pm P_{x} = D_{x}`, :math:`\pm P_{y} = D_{y}`, 则有
+
+:math:`(X + D_{x})*(Y + D_{y})`
+
+:math:`= X*Y + X*D_{y} + Y*D_{x} + D_{x}*D_{y}`
+
+在误差很小时, :math:`D_{x}*D_{y} = 0`, 则有
+
+:math:`(X + D_{x})*(Y + D_{y}) = X*Y + X*D_{y} + Y*D_{x}`
+
+即区间 `X` 与 `Y` 乘积的误差为 :math:`X*D_{y} + Y*D_{x}`
+
+则其误差的百分比为
+
+:math:`\frac{X*D_{y} + Y*D_{x}}{X*Y}`
+
+:math:`= \frac{D_{x}}{X} + \frac{D_{y}}{Y}`
+
+即 :math:`\frac{\pm P_{x}}{X} + \frac{\pm P_{y}}{Y}`
+
+
+*练习 2.14*
+--------------
+
+.. code-block:: scheme
+
+  ;; 求并联电阻的两种不同方法
+  (define (par1 r1 r2)
+    (div-interval
+     (mul-interval r1 r2)
+     (add-interval r1 r2)))
+
+  (define (par2 r1 r2)
+    (let ((one (make-interval 1 1)))
+      (div-interval
+       one
+       (add-interval (div-interval one r1)
+                     (div-interval one r2)))))
+
+计算两个区间 A, B 的表达式 A/A, A/B, 发现 A/A 的结果并不是 [1, 1]
+
+::
+
+  > (div-interval (make-interval 4 5) (make-interval 4 5))
+  (0.8 . 1.25)
+  > (div-interval (make-interval 400 401) (make-interval 400 401))
+  (0.997506234413965 . 1.0025)
+  > (div-interval (make-interval 4 5) (make-interval 5 8))
+  (0.5 . 1.0)
+  > (div-interval (make-interval 400 401) (make-interval 800 801))
+  (0.4993757802746567 . 0.50125)
+
+对比 `make-center-percent` 过程在求解并联电阻数据时不同计算方式产生的差异
+
+::
+
+  取 1% 时误差较大
+  > (par1 (make-center-percent 2 1) (make-center-percent 3 1))
+  (1.1644752475247526 . 1.2364848484848483)
+  > (par2 (make-center-percent 2 1) (make-center-percent 3 1))
+  (1.1880000000000002 . 1.212)
+
+  取 0.1% 时误差已经减小了很多
+  > (par1 (make-center-percent 2 0.1) (make-center-percent 3 0.1))
+  (1.1964047952047951 . 1.2036048048048047)
+  > (par2 (make-center-percent 2 0.1) (make-center-percent 3 0.1))
+  (1.1987999999999999 . 1.2012)
+
+可见虽然 `par1` 与 `par2` 在数学表达式上是等价的, 但在区间运算中, 两个区间的除法运算是第一个区间乘上第二个区间的倒数, 而倒数的两个界限分别是原来区间上界的倒数和下界的倒数, 这样就导致对于区间 A/A, 只要上界与下界存在差异, 其结果就不会为 1。
+
+*练习 2.15*
+----------------
+
+对于 :math:`\frac{1}{\frac{1}{R_{1}} + \frac{1}{R_{2}}}`, 首先转换为 :math:`\frac{1}{\frac{R_{2}}{R_{1}*R_{2}} + \frac{R_{1}}{R_{1}*R_{2}}}`, 然后转换为 :math:`\frac{R_{1}*R_{2}}{R_{1} + R_{2}}` 。
+
+这里有一个假设, 即 :math:`\frac{R_{1}}{R_{1}} = 1` 与 :math:`\frac{R_{2}}{R_{2}} = 1` 。
+
+但经过上题的测试发现 :math:`\frac{A}{A}` 并不为 `1`, 因此使用 `par1` 会扩大误差, `par2` 是比 `par1` 更好的程序。
+
+*练习 2.16*
+--------------
+
+观察区间除法的过程实现
+
+.. code-block:: scheme
+
+  ;; 区间除法
+  (define (div-interval x y)
+    (mul-interval x
+                  (make-interval (/ 1.0 (upper-bound y))
+                                 (/ 1.0 (lower-bound y)))))
+
+对于区间 `x` -> [a :sub:`1`, b :sub:`1` ], `y` -> [a :sub:`2`, b :sub:`2` ], 其结果为 [ :math:`\frac{a_{1}}{b_{2}}`, :math:`\frac{b_{1}}{a_{2}}` ], 则当两个相同区间相除时, x/x 的结果为 [ :math:`\frac{a_{1}}{b_{1}}`, :math:`\frac{b_{1}}{a_{1}}` ], y/y 的结果为 [ :math:`\frac{a_{2}}{b_{2}}`, :math:`\frac{b_{2}}{a_{2}}` ], 则其结果必然依赖与区间上下界的差异, 而上面的代数式之所以等价是基于 R :sub:`1`/R :sub:`1` = 1, 因此才导致了基于"等价"的代数表达式却出现了不同计算结果的现象。
+
+要解决此问题需要注意对于两个相同区间相除时应判断其是否为同一个变量, 如果为同一个变量则置为 1, 否则才按照之前的除法逻辑实现。

@@ -1,2 +1,585 @@
 2.4 抽象数据的多重表示
 ============================
+
+数据抽象是一种构造系统的方法学, 采用这种方法, 使得一个程序中的具体业务功能与这一程序选择怎样的数据对象的具体表示无关。
+
+数据抽象的关键性思想就是构筑起一道抽象屏障, 以实现高层应用与底层实现的隔离。
+
+为了更强大有力的数据抽象, 使得系统能够处理多种表示形式, 由抽象屏障隔离互不相同的设计选择。为了能够在一个一个程序的不同部分采用不同的表示方式, 需要构造通用型过程。即在数据对象中带上类型标志, 以便于知道采用哪种表示方式进行数据处理。
+
+2.4.1 复数的表示
+-----------------
+
+复数的两种表示方式: 直角坐标形式(实部和虚部)与极坐标形式(模和辅角)。
+
+其中直角坐标形式适用于复数的加减法, 极坐标形式适用于复数的乘除法。
+
+.. code-block:: scheme
+
+  ;; 基于获取实部、虚部的选择函数构造复数
+  (make-from-real-imag (real-part z)
+                     (imag-part z))
+
+  ;; 基于获取模、辅角的选择函数构造复数
+  (make-from-mag-ang (magnitude z)
+                   (angle z))
+
+  ;; 基于直角坐标形式和极坐标形式分别实现复数算术
+  (define (add-complex z1 z2)
+    (make-from-real-imag
+     (+ (real-part z1) (real-part z2))
+     (+ (imag-part z1) (imag-part z2))))
+
+  (define (sub-complex z1 z2)
+    (make-from-real-imag
+     (- (real-part z1) (real-part z2))
+     (- (imag-part z1) (imag-part z2))))
+
+  (define (mul-complex z1 z2)
+    (make-from-mag-ang
+     (* (magnitude z1) (magnitude z2))
+     (+ (angle z1) (angle z2))))
+
+  (define (div-complex z1 z2)
+    (make-from-mag-ang
+     (/ (magnitude z1) (magnitude z2))
+     (- (angle z1) (angle z2))))
+
+为了实现直角坐标形式与极坐标形式的转换, 可由下图构造转换过程
+
+.. figure:: fig/Fig2.20.std.svg
+
+复数 `z` 的直角坐标形式与极坐标形式
+
+由上图可知如下关系
+
+:math:`x = r cos A`
+
+:math:`y = r sin A`
+
+:math:`r = \sqrt{x^{2} + y^{2}}`
+
+:math:`A = arctan(y, x)`
+
+根据以上关系, 在得到一个直角坐标形式复数的实部与虚部之后, 便可以将其转换为极坐标形式
+
+.. code-block:: scheme
+
+  (define (real-part z) (car z))
+  (define (imag-part z) (cdr z))
+
+  (define (magnitude z)
+    (sqrt (+ (square (real-part z))
+             (square (imag-part z)))))
+
+  (define (angle z)
+    (atan (imag-part z) (real-part z)))
+
+  (define (make-from-real-imag x y)
+    (cons x y))
+
+  (define (make-from-mag-ang r a)
+    (cons (* r (cos a)) (* r (sin a))))
+
+在得到一个极坐标形式复数的模和辅角之后, 便可以将其转换为直角坐标形式
+
+.. code-block:: scheme
+
+  (define (real-part z)
+    (* (magnitude z) (cos (angle z))))
+
+  (define (imag-part z)
+    (* (magnitude z) (sin (angle z))))
+
+  (define (magnitude z) (car z))
+  (define (angle z) (cdr z))
+
+  (define (make-from-real-imag x y)
+    (cons (sqrt (+ (square x) (square y)))
+          (atan y x)))
+
+  (define (make-from-mag-ang r a)
+    (cons r a))
+
+2.4.2 带标志数据
+----------------
+
+为保持系统设计的最大灵活性, 在每个复数里包含一个类型标志, 将使用数据对象选择具体表示形式尽量往后推, 直到需要选择具体形式时才根据类型标志确定应用使用的选择函数。
+
+.. code-block:: scheme
+
+  ;; 根据标志和内容构造带标志的数据对象
+  (define (attach-tag type-tag contents)
+    (cons type-tag contents))
+
+  ;; 获取标志的选择函数
+  (define (type-tag datum)
+    (if (pair? datum)
+        (car datum)
+        (error "Bad tagged datum: TYPE-TAG" datum)))
+
+  ;; 获取内容的选择函数
+  (define (contents datum)
+    (if (pair? datum)
+        (cdr datum)
+        (error "Bad tagged datum: CONTENTS" datum)))
+
+  ;; 是否为直角坐标
+  (define (rectangular? z)
+    (eq? (type-tag z) 'rectangular))
+
+  ;; 是否为极坐标
+  (define (polar? z)
+    (eq? (type-tag z) 'polar))
+
+为了使两种不同的表示方式共存于同一个系统中, 可以在过程名中添加不同的后缀以示区别。
+
+.. code-block:: scheme
+
+  ;; 直角坐标形式的实部、虚部的选择函数
+  (define (real-part-rectangular z) (car z))
+  (define (imag-part-rectangular z) (cdr z))
+
+  ;; 直角坐标形式模的选择函数
+  (define (magnitude-rectangular z)
+    (sqrt (+ (square (real-part-rectangular z))
+             (square (imag-part-rectangular z)))))
+
+  ;; 直角坐标形式辅角的选择函数
+  (define (angle-rectangular z)
+    (atan (imag-part-rectangular z)
+          (real-part-rectangular z)))
+
+  ;; 将直角坐标形式的复数构造成带标志的数据对象
+  (define (make-from-real-imag-rectangular x y)
+    (attach-tag 'rectangular (cons x y)))
+
+  ;; 将极坐标形式的复数构造成带标志的数据对象
+  (define (make-from-mag-ang-rectangular r a)
+    (attach-tag
+     'rectangular
+     (cons (* r (cos a)) (* r (sin a)))))
+
+  ;; 同理可得极坐标的表示
+  (define (real-part-polar z)
+    (* (magnitude-polar z)
+       (cos (angle-polar z))))
+
+  (define (imag-part-polar z)
+    (* (magnitude-polar z)
+       (sin (angle-polar z))))
+
+  (define (magnitude-polar z) (car z))
+  (define (angle-polar z) (cdr z))
+
+  (define (make-from-real-imag-polar x y)
+    (attach-tag
+     'polar
+     (cons (sqrt (+ (square x) (square y)))
+           (atan y x))))
+
+  (define (make-from-mag-ang-polar r a)
+    (attach-tag 'polar (cons r a)))
+
+由此, 通用型选择函数需要判断标志然后再选择合适的处理数据的过程。
+
+.. code-block:: scheme
+
+  ;; 通用型获取复数实部的选择函数
+  (define (real-part z)
+    (cond ((rectangular? z)
+           (real-part-rectangular (contents z)))
+          ((polar? z)
+           (real-part-polar (contents z)))
+          (else (error "Unknown type: REAL-PART" z))))
+
+  ;; 通用型获取复数虚部的选择函数
+  (define (imag-part z)
+    (cond ((rectangular? z)
+           (imag-part-rectangular (contents z)))
+          ((polar? z)
+           (imag-part-polar (contents z)))
+          (else (error "Unknown type: IMAG-PART" z))))
+
+  ;; 通用型获取复数模的选择函数
+  (define (magnitude z)
+    (cond ((rectangular? z)
+           (magnitude-rectangular (contents z)))
+          ((polar? z)
+           (magnitude-polar (contents z)))
+          (else (error "Unknown type: MAGNITUDE" z))))
+
+  ;; 通用型获取复数辅角的选择函数
+  (define (angle z)
+    (cond ((rectangular? z)
+           (angle-rectangular (contents z)))
+          ((polar? z)
+           (angle-polar (contents z)))
+          (else (error "Unknown type: ANGLE" z))))
+
+有了通用型选择函数, 复数的算术运算则仍然沿用之前的实现。
+
+当有实部和虚部时采用直角坐标方式, 当有模和辅角时采用极坐标方式。
+
+.. code-block:: scheme
+
+  (define (make-from-real-imag x y)
+    (make-from-real-imag-rectangular x y))
+
+  (define (make-from-mag-ang r a)
+    (make-from-mag-ang-polar r a))
+
+当通用型选择函数需要对一个特定形式的数据对象进行操作时, 它需要剥去标志并将相应内容传给另一个特定形式; 与此相对应, 当一个特定形式的数据队形需要构造一个供通用型选择函数使用时, 它需要为其添加类型标志。在将数据对象从一个层次传到另一个层次的过程中, 这种剥去与添加标志的规范方式可以成为一种重要的组织策略。
+
+2.4.3 数据导向的程序设计和可加性
+----------------------------------
+
+上一节中根据数据项的类型调用某个适当过程(基于类型的分派), 存在两个弱点。一是每增加一种新的表示, 就必须在通用型选择函数中增加一个子句; 二是为保证在整个系统中不存在名字相同的过程, 需要为相同功能不同形式的选择函数添加不同的后缀。
+
+这两个弱点的根本问题在于, 上面的通用型选择函数不具有可加性。为了改进可使用数据导向的程序设计。
+
+.. figure:: fig/Fig2.22.std.svg
+
+复数系统的操作表
+
+对于复数系统的操作而言, 主要涉及两个维度: 一是所有可能的操作, 二是所有可能的类型。以此为参数, 在上面的表格中查找, 以便找到应该调用的适当过程. 并将这一过程应用于参数的内容。这样当新添加一种类型后, 则只需要在上面的表格中添加新的项目即可。
+
+.. code-block:: scheme
+
+  ;; 新添加直角坐标类型复数
+  (define (install-rectangular-package)
+    ;; 直角坐标形式复数的各个选择函数
+    (define (real-part z) (car z))
+    (define (imag-part z) (cdr z))
+    (define (make-from-real-imag x y)
+      (cons x y))
+    (define (magnitude z)
+      (sqrt (+ (square (real-part z))
+               (square (imag-part z)))))
+    (define (angle z)
+      (atan (imag-part z) (real-part z)))
+    (define (make-from-mag-ang r a)
+      (cons (* r (cos a)) (* r (sin a))))
+    ;; interface to the rest of the system
+    (define (tag x)
+      (attach-tag 'rectangular x))
+    ;; 以操作与类型作为索引, 将对应的操作添加到表格
+    (put 'real-part '(rectangular) real-part)
+    (put 'imag-part '(rectangular) imag-part)
+    (put 'magnitude '(rectangular) magnitude)
+    (put 'angle '(rectangular) angle)
+    (put 'make-from-real-imag 'rectangular
+         (lambda (x y)
+           (tag (make-from-real-imag x y))))
+    (put 'make-from-mag-ang 'rectangular
+         (lambda (r a)
+           (tag (make-from-mag-ang r a))))
+    'done)
+
+  ;; 新添加极坐标类型复数
+  (define (install-polar-package)
+    ;; 极坐标形式复数的各个选择函数
+    (define (magnitude z) (car z))
+    (define (angle z) (cdr z))
+    (define (make-from-mag-ang r a) (cons r a))
+    (define (real-part z)
+      (* (magnitude z) (cos (angle z))))
+    (define (imag-part z)
+      (* (magnitude z) (sin (angle z))))
+    (define (make-from-real-imag x y)
+      (cons (sqrt (+ (square x) (square y)))
+            (atan y x)))
+    ;; interface to the rest of the system
+    (define (tag x) (attach-tag 'polar x))
+    ;; 以操作与类型作为索引, 将对应的操作添加到表格
+    (put 'real-part '(polar) real-part)
+    (put 'imag-part '(polar) imag-part)
+    (put 'magnitude '(polar) magnitude)
+    (put 'angle '(polar) angle)
+    (put 'make-from-real-imag 'polar
+         (lambda (x y)
+           (tag (make-from-real-imag x y))))
+    (put 'make-from-mag-ang 'polar
+         (lambda (r a)
+           (tag (make-from-mag-ang r a))))
+    'done)
+
+  ;; 各种操作统一基于此过程实现
+  (define (apply-generic op . args)
+    (let ((type-tags (map type-tag args)))
+      (let ((proc (get op type-tags)))
+        (if proc
+            (apply proc (map contents args))
+            (error
+              "No method for these types: APPLY-GENERIC"
+              (list op type-tags))))))
+
+  ;; 获取复数实部、虚部、模、辅角的选择函数
+  (define (real-part z)
+    (apply-generic 'real-part z))
+  (define (imag-part z)
+    (apply-generic 'imag-part z))
+  (define (magnitude z)
+    (apply-generic 'magnitude z))
+  (define (angle z)
+    (apply-generic 'angle z))
+
+  ;; 基于表格提取构造函数
+  (define (make-from-real-imag x y)
+    ((get 'make-from-real-imag
+          'rectangular)
+     x y))
+
+  (define (make-from-mag-ang r a)
+    ((get 'make-from-mag-ang
+          'polar)
+     r a))
+
+练习 2.73
+-------------
+
+.. code-block:: scheme
+
+  (define (deriv exp var)
+     (cond ((number? exp) 0)
+           ((variable? exp)
+             (if (same-variable? exp var)
+                 1
+                 0))
+           (else ((get 'deriv (operator exp))
+                  (operands exp)
+                  var))))
+
+  (define (operator exp) (car exp))
+  (define (operands exp) (cdr exp))
+
+a.
+
+上面的过程实现了对代数表达式的求导。
+
+因为 `number?` 和 `same-variable?` 调用的是系统内置的谓词判断函数, 因此没有必要再基于数据导向封装
+
+b.
+
+.. code-block:: scheme
+
+  ;; 添加和式的求导过程
+  (define (install-sum-deriv-package)
+    ;; 使用 contents 获取表达式的参数列表, 因此获取加数与被加数的过程要做一些修改
+    (define (addend s) (car s))
+    (define (augend s) (cadr s))
+    ;; 构造和式沿用之前的过程
+    (define (make-sum a1 a2)
+      (cond ((=number? a1 0) a2)
+            ((=number? a2 0) a1)
+            ((and (number? a1) (number? a2)) (+ a1 a2))
+            (else (list '+ a1 a2))))
+    ;; 将选择函数和构造函数添加到表格
+    (put 'addend '+ addend)
+    (put 'augend '+ augend)
+    (put 'make-sum '+ make-sum)
+    ;; 为和式构造求导规则
+    (put 'deriv '+
+         (lambda (exp var)
+           (make-sum (deriv (addend exp) var)
+                     (deriv (augend exp) var))))
+    'done)
+
+  ;; 构造和式的通用型选择函数和构造函数
+  (define (addend s)
+    ((get 'addend '+) (contents s)))
+  (define (augend s)
+    ((get 'augend '+) (contents s)))
+  (define (make-sum a1 a2)
+    ((get 'make-sum '+) a1 a2))
+
+仿照上面的过程将乘式的求导过程安装到表格
+
+.. code-block:: scheme
+
+  (define (install-product-deriv-package)
+    (define (multiplier p) (car p))
+    (define (multiplicand p) (cadr p))
+    (define (make-product m1 m2)
+      (cond ((or (=number? m1 0) (=number? m2 0)) 0)
+            ((=number? m1 1) m2)
+            ((=number? m2 1) m1)
+            ((and (number? m1) (number? m2)) (* m1 m2))
+            (else (list '* m1 m2))))
+    (put 'multiplier '* multiplier)
+    (put 'multiplicand '* multiplicand)
+    (put 'make-product '* make-product)
+    (put 'deriv '*
+         (lambda (exp var)
+           (make-sum
+            (make-product
+             (multiplier exp)
+             (deriv (multiplicand exp) var))
+            (make-product
+             (deriv (multiplier exp) var)
+             (multiplicand exp)))))
+    'done)
+
+  (define (multiplier p)
+    ((get 'multiplier '*) (contents p)))
+  (define (multiplicand p)
+    ((get 'multiplicand '*) (contents p)))
+  (define (make-product m1 m2)
+    ((get 'make-product '*) m1 m2))
+
+为了测试验证, 需要引入书中 `186` 页的 `make-table` 过程
+
+::
+
+  > (define operation-table (make-table))
+  > (define get (operation-table 'lookup-proc))
+  > (define put (operation-table 'insert-proc!))
+  > (install-sum-deriv-package)
+  done
+  > (install-product-deriv-package)
+  done
+  > (deriv '(+ x 3) 'x)
+  1
+  > (deriv '(* x y) 'x)
+  y
+  > (deriv '(* (* x y) (+ x 3)) 'x)
+  (+ (* x y) (* y (+ x 3)))
+
+c.
+
+参照上面过程, 对 `练习 2.56` 中的题解进行修改
+
+.. code-block:: scheme
+
+  (define (install-exponentiation-deriv-package)
+    (define (base exp) (car exp))
+    (define (exponent exp) (cadr exp))
+    (define (make-exponentiation b e)
+      (cond ((= e 0) 1)
+            ((= e 1) b)
+            (else (list '** b e))))
+    (put 'base '** base)
+    (put 'exponent '** exponent)
+    (put 'make-exponentiation '** make-exponentiation)
+    (put 'deriv '**
+         (lambda (exp var)
+           (let ((b (base exp))
+                 (e (exponent exp)))
+             (make-product
+              e
+              (make-product
+               (make-exponentiation b (- e 1))
+               (deriv b var))))))
+    'done)
+
+  (define (base exp)
+    ((get 'base '**) (contents exp)))
+  (define (exponent exp)
+    ((get 'exponent '**) (contents exp)))
+  (define (make-exponentiation b e)
+    ((get 'make-exponentiation '**) b e))
+
+测试验证
+
+::
+
+  > (install-exponentiation-deriv-package)
+  done
+  > (deriv '(** x 5) 'x)
+  (* 5 (** x 4))
+
+d.
+
+因为 `get` 操作的 `key` 发生了变动, 因此需要把求导系统中的 `put` 操作进行相应的改动。
+
+练习 2.74
+------------
+
+a.
+
+.. code-block:: scheme
+
+  ;; get-record 过程可以直接基于 apply-generic 过程来构造
+  (define (get-record file-name user-name)
+    (apply-generic 'get-record file-name user-name))
+
+因为基于 `apply-generic` 来构造, 因此各个独立分支机构的文件应构造形如 `(division-name ...)` 的结构, 即它们必须提供独立分支机构名称这一类型信息。
+
+b.
+
+.. code-block:: scheme
+
+  ;; get-salary 过程同样直接基于 apply-generic 过程来构造
+  (define (get-salary file-name user-name)
+    (apply-generic 'get-salary file-name user-name))
+
+因为基于 `apply-generic` 来构造, 因此雇员记录应构造形如 `(property ...)` 的结构, 即它们必须提供属性这一类型信息。
+
+c.
+
+.. code-block:: scheme
+
+  (define (find-employee-record user-name file-list)
+    (if (null? file-list)
+        '()
+        (let ((item (get-record (car file-list) user-name)))
+          (if (null? item)
+              (find-employee-record user-name (cdr file-list))
+              item))))
+
+d.
+
+与求导过程中添加新的求导规则类似, 需要将新的人事文件结构以及雇员记录结构的相关操作 `put` 到系统表格中。
+
+**消息传递**
+
+基于类型进行分派的组织方式从效果上看就是将操作-类型表格分解成一行行, 每个通用型过程表示表格中的一行。
+
+基于消息传递的组织方式从效果上看可以基于表格按列进行分解, 基于操作名完成所需的分派工作。
+
+.. code-block:: scheme
+
+  ;; 基于消息传递方式改造的 make-from-real-imag 过程
+  (define (make-from-real-imag x y)
+    (define (dispatch op)
+      (cond ((eq? op 'real-part) x)
+            ((eq? op 'imag-part) y)
+            ((eq? op 'magnitude)
+             (sqrt (+ (square x) (square y))))
+            ((eq? op 'angle) (atan y x))
+            (else
+             (error "Unknown op: MAKE-FROM-REAL-IMAG" op))))
+    dispatch)
+
+  ;; 为配合上面的改造, apply-generic 过程也需要进行修改
+  (define (apply-generic op arg) (arg op))
+
+此时调用 `make-from-real-imag` 过程将返回 `dispatch`, 其接收一个操作名称, 根据操作名称执行指定的操作。
+
+练习 2.75
+-----------
+
+.. code-block:: scheme
+
+  (define (make-from-mag-ang r a)
+    (define (dispatch op)
+      (cond ((eq? op 'magnitude) r)
+            ((eq? op 'angle) a)
+            ((eq? op 'real-part) (* r (cos a)))
+            ((eq? op 'imag-part) (* r (sin a)))
+            (else
+             (error "Unknown op: MAKE-FROM-MAG-ANG" op))))
+    dispatch)
+
+练习 2.76
+------------
+
+在加入一个新类型或新操作时,
+
+显式分派的通用型操作: 系统需要修改通用型操作函数, 在里面添加新类型的分支, 同时新类型中的各种同质功能的选择函数和构造函数需要避免重名。
+
+数据导向风格: 系统需要通过包机制增加新类型及其私有的选择函数和构造函数。
+
+消息传递风格: 系统因为将数据对象视为一个实体, 以“消息”的方式接收所需操作的名字, 所以需要重新载入修改后的构造过程。
+
+综上, 数据导向的风格既适合经常加入新类型的系统也适合经常加入新操作的系统, 而显式分派两种都不适合, 消息传递风格只适合经常需要加入新类型的系统。

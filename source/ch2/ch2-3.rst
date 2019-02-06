@@ -145,7 +145,7 @@ test
              (multiplier exp)
              (deriv (multiplicand exp) var))
             (make-product
-             (deriv (multiplicand exp) var)
+             (deriv (multiplicer exp) var)
              (multiplicand exp))))
           (else (error "unknown expression type: DERIV" exp))))
 

@@ -1,2 +1,293 @@
 3.1 赋值和局部状态
 ========================
+
+我们可以用一个或几个状态变量刻画一个对象的状态, 在它们之间维持着有关这一对象的历史, 即能够确定该对象当前行为的的充分信息。
+
+每一个计算对象必须有它自己的一些局部状态变量, 用于描述实际对象的状态。特别的, 我们希望通过赋值运算符去改变一个名字关联的值。
+
+*3.1.1 局部状态变量*
+-------------------------
+
+使用 `withdraw` 模拟从银行账户支取现金
+
+.. code-block:: scheme
+
+  ;; 现金余额
+  (define balance 100)
+
+  ;; 使用 set! 在余额变化后对 balance 重新赋值
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds"))
+
+测试验证
+
+::
+
+  > (withdraw 25)
+  75
+  > (withdraw 25)
+  50
+  > (withdraw 60)
+  "Insufficient funds"
+  > (withdraw 15)
+  35
+
+为避免定义在全局环境中的 `balance` 被其它过程查看或修改, 应将其封装为 `withdraw` 过程的局部状态变量.
+
+.. code-block:: scheme
+
+  (define new-withdraw
+    (let ((balance 100))
+      (lambda (amount)
+        (if (>= balance amount)
+            (begin (set! balance (- balance amount))
+                   balance)
+            "Insufficient funds"))))
+
+测试验证
+
+::
+
+  > (new-withdraw 25)
+  75
+  > (new-withdraw 25)
+  50
+  > (new-withdraw 60)
+  "Insufficient funds"
+  > (new-withdraw 15)
+  35
+
+因为现在过程中使用了赋值操作, 因此之前对于过程求值的代换模型将不再适用。
+
+`new-withdraw` 的一种变形
+
+.. code-block:: scheme
+
+  (define (make-withdraw balance)
+    (lambda (amount)
+      (if (>= balance amount)
+          (begin (set! balance (- balance amount))
+                 balance)
+          "Insufficient funds")))
+
+测试验证
+
+::
+
+  > (define W1 (make-withdraw 100))
+  > (define W2 (make-withdraw 100))
+  > (W1 50)
+  50
+  > (W2 70)
+  30
+  > (W2 40)
+  "Insufficient funds"
+  > (W1 40)
+  10
+
+可以看到 `W1` 与 `W2` 为两个独立的对象, 两者拥有各自独立的 `balance` 。
+
+构造即可以取款又可以存款的对象
+
+.. code-block:: scheme
+
+  (define (make-account balance)
+    (define (withdraw amount)
+      (if (>= balance amount)
+          (begin (set! balance (- balance amount))
+                 balance)
+          "Insufficient funds"))
+    (define (deposit amount)
+      (set! balance (+ balance amount))
+      balance)
+    (define (dispatch m)
+      (cond ((eq? m 'withdraw) withdraw)
+            ((eq? m 'deposit) deposit)
+            (else (error "UnKnown request: MAKE-ACCOUNT" m))))
+    dispatch)
+
+测试验证
+
+::
+
+  > (define acc (make-account 100))
+  > ((acc 'withdraw) 50)
+  50
+  > ((acc 'withdraw) 60)
+  "Insufficient funds"
+  > ((acc 'deposit) 40)
+  90
+  > ((acc 'withdraw) 60)
+  30
+
+对于 `make-account` 的另一次调用将会产生出另一个完全独立的账户。
+
+*练习 3.1*
+---------------
+
+.. code-block:: scheme
+
+  (define (make-accumulator sum)
+    (lambda (n)
+      (set! sum (+ sum n))
+      sum))
+
+测试验证
+
+::
+
+  > (define A (make-accumulator 5))
+  > (A 10)
+  15
+  > (A 10)
+  25
+
+*练习 3.2*
+----------------
+
+.. code-block:: scheme
+
+  (define (make-monitored f)
+    (let ((count 0))
+      (define (how-many-call)
+        count)
+      (define (reset-count)
+        (set! count 0))
+      (define (dispatch m)
+        (cond ((eq? m 'how-many-call?) (how-many-call))
+              ((eq? m 'reset-count) (reset-count))
+              (else (and (set! count (+ count 1))
+                         (f m)))))
+      dispatch))
+
+测试验证
+
+::
+
+  > (define s (make-monitored sqrt))
+  > (s 100)
+  10
+  > (s 'how-many-call?)
+  1
+  > (s 'reset-count)
+  > (s 'how-many-call?)
+  0
+  > (s 36)
+  6
+  > (s 49)
+  7
+  > (s 64)
+  8
+  > (s 'how-many-call)
+  3
+
+*练习 3.3*
+--------------
+
+.. code-block:: scheme
+
+  (define (make-account balance password)
+    (define (withdraw amount)
+      (if (>= balance amount)
+          (begin (set! balance (- balance amount))
+                 balance)
+          "Insufficient funds"))
+    (define (deposit amount)
+      (set! balance (+ balance amount))
+      balance)
+    (define (dispatch p m)
+      (if (eq? p password)
+          (cond ((eq? m 'withdraw) withdraw)
+                ((eq? m 'deposit) deposit)
+                (else (error "UnKnown request: MAKE-ACCOUNT" m)))
+          (lambda (amount) "Incorrect password")))
+    dispatch)
+
+测试验证
+
+::
+
+  > (define acc (make-account 100 'secret-password))
+  > ((acc 'secret-password 'withdraw) 40)
+  60
+  > ((acc 'some-other-password 'deposit) 50)
+  "Incorrect password"
+
+*练习 3.4*
+--------------
+
+.. code-block:: scheme
+
+  (define (make-account balance password)
+    (define password-error-num 0)
+    (define (call-the-cops)
+      "call-the-cops")
+    (define (withdraw amount)
+      (if (>= balance amount)
+          (begin (set! balance (- balance amount))
+                 balance)
+          "Insufficient funds"))
+    (define (deposit amount)
+      (set! balance (+ balance amount))
+      balance)
+    (define (alert amount)
+      (begin (set! password-error-num (+ password-error-num 1))
+             (if (>= password-error-num 7)
+                 (call-the-cops)
+                 "Incorrect password")))
+    (define (dispatch p m)
+      (if (eq? p password)
+          ;; 密码正确则计数器归零
+          (and (set! password-error-num 0)
+               (cond ((eq? m 'withdraw) withdraw)
+                     ((eq? m 'deposit) deposit)
+                     (else (error "UnKnown request: MAKE-ACCOUNT" m))))
+          alert))
+    dispatch)
+
+测试验证
+
+::
+
+  > (define acc (make-account 100 'secret-password))
+  > ((acc 'secret-password 'withdraw) 40)
+  60
+  > ((acc 'some-other-password 'deposit) 50)
+  "Incorrect password"
+  > ((acc 'some-other-password 'deposit) 50)
+  "Incorrect password"
+  > ((acc 'some-other-password 'deposit) 50)
+  "Incorrect password"
+  > ((acc 'some-other-password 'deposit) 50)
+  "Incorrect password"
+  > ((acc 'some-other-password 'deposit) 50)
+  "Incorrect password"
+  > ((acc 'some-other-password 'deposit) 50)
+  "Incorrect password"
+  连续输错七次后报警
+  > ((acc 'some-other-password 'deposit) 50)
+  "call-the-cops"
+  > ((acc 'some-other-password 'deposit) 50)
+  "call-the-cops"
+  输入正确密码后仍然需要连续输错七次才报警
+  > ((acc 'secret-password 'withdraw) 40)
+  20
+  > ((acc 'some-other-password 'deposit) 50)
+  "Incorrect password"
+  > ((acc 'some-other-password 'deposit) 50)
+  "Incorrect password"
+  > ((acc 'some-other-password 'deposit) 50)
+  "Incorrect password"
+  > ((acc 'some-other-password 'deposit) 50)
+  "Incorrect password"
+  > ((acc 'some-other-password 'deposit) 50)
+  "Incorrect password"
+  > ((acc 'some-other-password 'deposit) 50)
+  "Incorrect password"
+  > ((acc 'some-other-password 'deposit) 50)
+  "call-the-cops"
+  > ((acc 'some-other-password 'deposit) 50)
+  "call-the-cops"

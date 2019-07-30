@@ -291,3 +291,153 @@
   "call-the-cops"
   > ((acc 'some-other-password 'deposit) 50)
   "call-the-cops"
+
+*3.1.2 引进赋值带来的收益*
+----------------------------
+
+使用不同的方式来实现蒙特卡罗模拟, 以对比使用赋值和不使用赋值的差异。
+
+使用赋值的方式实现蒙特卡罗方法, 基于 :math:`\frac{6}{\pi^2}` 是随机选取的两个整数之间没有公共因子的概率来计算 :math:`\pi` 的近似值。
+
+.. code-block:: scheme
+
+  ;; 根据以上的概率公式构建过程
+  (define (estimate-pi trials)
+    (sqrt (/ 6 (monte-carlo trials cesaro-test))))
+
+  ;; 测试两个随机数是否互质
+  (define (cesaro-test)
+    (= (gcd (rand) (rand)) 1))
+
+  ;; 这里 rand 的实现将局部状态变量 x 封装在过程之中
+  ;; 初次调用时使用 random-init 对其初始化, 然后使其作为 rand-update 的参数获取新的随机数
+  (define rand
+    (let ((x random-init))
+      (lambda ()
+        (set! x (rand-update x))
+        x)))
+
+  ;; 蒙特卡罗方法
+  ;; 传入指定的实验次数及实验本身
+  ;; 在迭代过程中记录实验结果为真的次数
+  ;; 当实验次数迭代到零时返回实验结果为真的次数占总次数的比值
+  (define (monte-carlo trials experiment)
+    (define (iter trials-remaining trials-passed)
+      (cond ((= trials-remaining 0)
+             (/ trials-passed trials))
+            ((experiment)
+             (iter (- trials-remaining 1)
+                   (+ trials-passed 1)))
+            (else
+             (iter (- trials-remaining 1)
+                   trials-passed))))
+    (iter trials 0))
+
+在上面的过程中因为将生成随机数的过程封装在 `rand` 过程中, 因此代码可以很好的体现出蒙特卡罗方法的思想, 而如果不采用上面的方式, 则会将生成随机数与蒙特卡罗方法掺杂在一起, 导致层层嵌套不便于改进也不具备兼容性的代码出现。
+
+.. code-block:: scheme
+
+  (define (estimate-pi trials)
+    (sqrt (/ 6 (random-gcd-test trials random-init))))
+
+  (define (random-gcd-test trials initial-x)
+    (define (iter trials-remaining trials-passed x)
+      (let ((x1 (rand-update x)))
+        (let ((x2 (rand-update x1)))
+          (cond ((= trials-remaining 0)
+                 (/ trials-passed trials))
+                ((= (gcd x1 x2) 1)
+                 (iter (- trials-remaining 1)
+                       (+ trials-passed 1)
+                       x2))
+                (else
+                 (iter (- trials-remaining 1)
+                       trials-passed
+                       x2))))))
+    (iter trials 0 initial-x))
+
+与所有状态都必须显式的操作和传递额外参数的方式相比, 通过引进赋值和将状态隐藏在局部变量中的技术, 我们能以一种更模块化的方式构造系统。
+
+*练习 3.5*
+---------------
+
+.. code-block:: scheme
+
+  (define (random-in-range low high)
+    (let ((range (- high low)))
+      (+ low (random range))))
+
+  ;; 直接用矩形面积乘以蒙特卡罗方法的结果即为积分的预估值
+  (define (estimate-integral P x1 x2 y1 y2 trials)
+    (define (experiment)
+      (P (random-in-range x1 x2)
+         (random-in-range y1 y2)))
+    (* (* (- x2 x1)
+          (- y2 y1))
+       (monte-carlo trials experiment)))
+
+  ;; 判断方法基于圆的方程式
+  (define (P x y)
+    (< (+ (expt (- x 5) 2)
+          (expt (- y 7) 2))
+       9))
+
+  ;; 计算 pi 的预估值直接用积分预估值除以半径的评分即可
+  (define (estimate-pi trials)
+    (/ (estimate-integral P 2.0 8.0 4.0 10.0 trials)
+       9.0))
+
+测试验证
+
+::
+
+  > (estimate-pi 10000)
+  3.1152
+  > (estimate-pi 100000)
+  3.13824
+  > (estimate-pi 1000000)
+  3.141092
+  > (estimate-pi 10000000)
+  3.1417688
+
+*练习 3.6*
+--------------
+
+.. code-block:: scheme
+
+  (define rand
+    (let ((x random-init))
+      (define (dispatch message)
+        (cond ((eq? message 'generate)
+               (begin (set! x (rand-update x))
+                      x))
+              ((eq? message 'reset)
+               (lambda (new-value)
+                 (set! x new-value)))
+              (else
+               (erro "Unknow mode -- RAND" message))))
+      dispatch))
+
+  (define random-init 1.0)
+  ;; 暂时没有找到根据相同种子生成相同随机数的过程, 这里简单模拟一下
+  (define (rand-update x)
+    (+ x 1.23))
+
+
+测试验证
+
+::
+
+  > (rand 'generate)
+  2.23
+  > (rand 'generate)
+  3.46
+  > (rand 'generate)
+  4.6899999999999995
+  > ((rand 'reset) 1.0)
+  > (rand 'generate)
+  2.23
+  > (rand 'generate)
+  3.46
+  > (rand 'generate)
+  4.6899999999999995

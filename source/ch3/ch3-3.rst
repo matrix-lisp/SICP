@@ -1302,3 +1302,548 @@
       (memoize 1)))
 
 此时 `lookup` 在 `table` 中找到 1, 直接返回, 因此最终结果为 2, 将 2 插入 `table` 并返回 2
+
+*3.3.4 数字电路的模拟器*
+--------------------------
+
+.. figure:: fig/Fig3.25c.std.svg
+
+半加器
+
+.. code-block:: scheme
+
+  (define (half-adder a b s c)
+    (let ((d (make-wire)) (e (make-wire)))
+      (or-gate a b d)
+      (and-gate a b c)
+      (inverter c e)
+      (and-gate d e s)
+      'ok))
+
+.. figure:: fig/Fig3.26.std.svg
+
+全加器
+
+.. code-block:: scheme
+
+  (define (full-adder a b c-in sum c-out)
+    (let ((c1 (make-wire))
+          (c2 (make-wire))
+          (s  (make-wire)))
+      (half-adder b c-in s c1)
+      (half-adder a s sum c2)
+      (or-gate c1 c2 c-out)
+      'ok))
+
+**基本功能块**
+
+线路的基本功能
+
+::
+  ;; 获取线路上的信号值
+  (get-signal ⟨wire⟩)
+
+  ;; 设置线路上的信号值
+  (set-signal! ⟨wire⟩ ⟨new value⟩)
+
+  ;; 对线路执行一个过程
+  (add-action! ⟨wire⟩ ⟨procedure of no arguments⟩)
+
+  ;; 指定的时延后执行指定的过程
+  (after-delay delay action)
+
+在上面的基础上实现反门
+
+.. code-block:: scheme
+
+  (define (inverter input output)
+    (define (invert-input)
+      (let ((new-value
+             (logical-not (get-signal input))))
+        (after-delay
+         inverter-delay
+         (lambda ()
+           (set-signal! output new-value)))))
+    (add-action! input invert-input)
+    'ok)
+
+  (define (logical-not s)
+    (cond ((= s 0) 1)
+          ((= s 1) 0)
+          (else (error "Invalid signal" s))))
+
+与门的实现
+
+.. code-block:: scheme
+
+  (define (and-gate a1 a2 output)
+    (define (and-action-procedure)
+      (let ((new-value
+             (logical-and (get-signal a1)
+                          (get-signal a2))))
+        (after-delay
+         and-gate-delay
+         (lambda ()
+           (set-signal! output new-value)))))
+    (add-action! a1 and-action-procedure)
+    (add-action! a2 and-action-procedure)
+    'ok)
+
+*练习 3.28*
+-------------
+
+仿照反门和与门实现或门
+
+.. code-block:: scheme
+
+  (define (or-gate a1 a2 output)
+    (define (or-action-procedure)
+      (let ((new-value
+             (logical-or (get-signal a1) (get-signal a2))))
+        (after-delay or-gate-delay
+                     (lambda ()
+                       (set-signal! output new-value)))))
+    (add-action! a1 or-action-procedure)
+    (add-action! a2 or-action-procedure)
+    'ok)
+
+  (define (logical-or s1 s2)
+    (if (or (= s1 1)
+            (= s2 1))
+        1
+        0))
+
+测试验证:
+
+::
+
+  ;; 初始化 the-agenda
+  > (define the-agenda (make-agenda))
+  > the-agenda
+  (0)
+
+  ;; 构造三条线路
+  > (define a1 (make-wire))
+  > (define a2 (make-wire))
+  > (define output (make-wire))
+
+  ;; 将线路连接到或门
+  > (or-gate a1 a2 output)
+  ok
+
+  ;; 执行模拟
+  > (propagate)
+  done
+
+  ;; 查看输出线路的信号值
+  > (get-signal output)
+  0
+
+  ;; 改变输入线路的信号值
+  > (set-signal! a1 1)
+  done
+
+  ;; 再次执行模拟
+  > (propagate)
+  done
+
+  ;; 再次查看输出线路的信号值, 已经发生变化
+  > (get-signal output)
+  1
+
+*练习 3.29*
+-------------
+
+这里要求用与门和反门构造或门, 显然, 对于 :math:`P \lor Q` 取反, 则有
+
+:math:`\neg(P \vee Q) = (\neg P) \wedge (\neg Q)`
+
+即
+
+:math:`P \vee Q = \neg((\neg P) \wedge (\neg Q))`
+
+因此可通过如下方式构建或门
+
+.. code-block:: scheme
+
+  (define (or-gate a1 a2 output)
+    (let ((inverter-a1 (inverter a1 (make-wire)))
+          (inverter-a2 (inverter a2 (make-wire))))
+      (inverter (and-gate inverter-a1 inverter-a2 (make-wire))))
+    '())
+
+测试验证:
+
+::
+
+  ;; 运行模拟
+  > (propagate)
+  done
+
+  ;; 输出信号值未变
+  > (get-signal output)
+  1
+
+  ;; 改变输入信号值
+  > (set-signal! a1 0)
+  done
+
+  ;; 再次执行模拟
+  > (propagate)
+  done
+
+  ;; 再次查看输出线路的信号值
+  > (get-signal output)
+  0
+
+由上面 `or-gate` 的实现可知, 共调用了三次反门和一次与门, 因此或门的时延等于三倍的反门时延加一次与门时延。
+
+
+*练习 3.30*
+-------------
+
+从二进制数据中迭代取出二进制位信号值调用全加器进行计算即可。
+
+.. code-block:: scheme
+
+  (define (ripple-carry-adder binary-A binary-B binary-S C)
+    (let ((c-in (make-wire)))
+      (if (null? binary-A)
+          'ok
+          (and
+           (set-signal! c-in (get-signal C))
+           (full-adder (car binary-A) (car binary-B) c-in (car binary-S) C)
+           (ripple-carry-adder (cdr binary-A) (cdr binary-B) (cdr binary-S) C)))))
+
+
+测试验证:
+
+::
+
+  ;; 构建线路
+  > (define A1 (make-wire))
+  > (define B1 (make-wire))
+  > (define S1 (make-wire))
+  > (define C (make-wire))
+
+  ;; 将线路连接到级联进位加法器
+  > (ripple-carry-adder (list A1) (list B1) (list S1) C)
+  ok
+
+  ;; 执行模拟
+  > (propagate)
+  done
+
+  ;; 求和线路与进位线路的信号值
+  > (get-signal S1)
+  0
+  > (get-signal C)
+  0
+
+  ;; 改变线路初值继续模拟
+  > (set-signal! A1 1)
+  done
+  > (ripple-carry-adder (list A1) (list B1) (list S1) C)
+  ok
+  > (propagate)
+  done
+
+  ;; 查看结果
+  > (get-signal S1)
+  1
+  > (get-signal C)
+  0
+
+  ;; 再次模拟
+  > (set-signal! B1 1)
+  done
+  > (ripple-carry-adder (list A1) (list B1) (list S1) C)
+  ok
+  > (propagate)
+  done
+  > (get-signal S1)
+  0
+  > (get-signal C)
+  1
+
+  ;; 再次模拟
+  > (ripple-carry-adder (list A1) (list B1) (list S1) C)
+  ok
+  > (propagate)
+  done
+  > (get-signal S1)
+  1
+  > (get-signal C)
+  1
+
+**线路的表示**
+
+.. code-block:: scheme
+
+  (define (make-wire)
+    ;; 两个主要元素
+    ;; signal-value 标识信号值
+    ;; action-procedures 标识过程列表
+    (let ((signal-value 0)
+          (action-procedures '()))
+      ;; 信号值改变时依次调用过程列表中的每个过程
+      (define (set-my-signal! new-value)
+        (if (not (= signal-value new-value))
+            (begin (set! signal-value new-value)
+                   (call-each
+                    action-procedures))
+            'done))
+      ;; 向过程列表中添加新的过程
+      (define (accept-action-procedure! proc)
+        (set! action-procedures
+              (cons proc action-procedures))
+        (proc))
+      (define (dispatch m)
+        (cond ((eq? m 'get-signal)
+               signal-value)
+              ((eq? m 'set-signal!)
+               set-my-signal!)
+              ((eq? m 'add-action!)
+               accept-action-procedure!)
+              (else (error "Unknown operation:WIRE" m))))
+      dispatch))
+
+即仿照前面章节银行账户的实现方式, 采用消息传递的风格, 将线路实现为一组局部过程和一个 `dispatch` 过程。
+
+其中 `call-each` 为一个递归实现。
+
+.. code-block:: scheme
+
+  (define (call-each procedures)
+    (if (null? procedures)
+        'done
+        (begin
+            ((car procedures))
+            (call-each (cdr procedures)))))
+
+
+然后根据 `dispatch` 实现对线路的各种操作
+
+.. code-block:: scheme
+
+  (define (get-signal wire)
+    (wire 'get-signal))
+
+  (define (set-signal! wire new-value)
+    ((wire 'set-signal!) new-value))
+
+  (define (add-action! wire action-procedure)
+    ((wire 'add-action!) action-procedure))
+
+
+**待处理表**
+
+`after-delay` 由数据结构-*待处理表* 实现
+
+::
+
+  ;; 返回一个新的空的待处理表
+  (make-agenda)
+
+  ;; 判断待处理表是否为空
+  (empty-agenda? <agenda>)
+
+  ;; 返回待处理表的第一个项目
+  (first-agenda-item <agenda>)
+
+  ;; 删除待处理表的第一个项目
+  (remove-first-agenda-item! <agenda>)
+
+  ;; 待处理表添加项目, 限定特定的时间执行特定的操作
+  (add-to-agenda! <time> <action> <agenda>)
+
+  ;; 返回当时的模拟时间
+  (current-time <agenda>)
+
+有了待处理表, 则可将 `after-delay` 实现为
+
+.. code-block:: scheme
+
+  (define (after-delay delay action)
+    (add-to-agenda! (+ delay (current-time the-agenad))
+                    action
+                    the-agenad))
+
+
+基于以上的实现进行模拟
+
+.. code-block:: scheme
+
+  (define (propagate)
+    (if (empty-agenda? the-agenad)
+        'done
+        (let ((first-item (first-agenda-item the agenda)))
+          (first-item)
+          (remove-first-agenda-item! the-agenda)
+        (propagate))))
+
+**一个简单的实例模拟**
+
+.. code-block:: scheme
+
+  ;; 在线路上放置监测器, 以便于记录当前线路, 时间以及信号值的变化情况
+  (define (probe name wire)
+    (add-action! wire (lambda ()
+                        (newline)
+                        (display name)
+                        (display " ")
+                        (display (current-time the-agenda))
+                        (display "  New-value = ")
+                        (display (get-signal wire))
+                        (newline))))
+
+  ;; 初始化待处理表
+  (define the-agenda (make-agenda))
+  ;; 定义各个功能块的延时
+  (define inverter-delay 2)
+  (define and-gate-delay 3)
+  (define or-gate-delay 5)
+
+  ;; 定义四条线路
+  (define input-1 (make-wire))
+  (define input-2 (make-wire))
+  (define sum (make-wire))
+  (define carry (make-wire))
+
+测试验证:
+
+::
+
+  ;; 在 sum 和 carry 中添加监测器
+  > (probe 'sum sum)
+
+  sum 0  New-value = 0
+  > (probe 'carry carry)
+
+  carry 0  New-value = 0
+  ;; 将以上四条线路连接到半加器上
+  > (half-adder input-1 input-2 sum carry)
+  ;; 设置信号值
+  > (set-signal! input-1 1)
+  done
+  ;; 执行模拟
+  > (propagate)
+
+  sum 8  New-value = 1
+  done
+
+  ;; 设置信号值后继续模拟
+  > (set-signal! input-2 1)
+  done
+  > (propagate)
+
+  carry 11  New-value = 1
+
+  sum 16  New-value = 0
+  done
+
+*练习 3.31*
+-------------
+
+对于 `half-adder` 的实现, 其中会分别调用 `or-gate`, `and-gate`, `inverter`, 这些实现当中都调用了 `(add-action! wire action)`, 而这些过程的具体实现中又都调用了 `(after-delay delay action)`, 对于 `after-delay` 的实现, 它会将 `action` 添加到待处理表中。
+
+这样如果将 `accept-action-procedure!` 定义为如下形式
+
+.. code-block:: scheme
+
+  (define (accept-action-procedure! proc)
+    (set! action-procedures
+          (cons proc action-procedures)))
+
+则其不会调用 `after-delay`, `action` 也就不会添加到待处理表中。这样在调用模拟 `propagate` 将会失效。
+
+**待处理表的实现**
+
+.. code-block:: scheme
+
+  ;; 待处理表的实现方式-由时间与队列组成的序对
+  (define (make-time-segment time queue)
+    (cons time queue))
+  (define (segment-time s) (car s))
+  (define (segment-queue s) (cdr s))
+
+  ;; 新创建的待处理表里没有时间
+  (define (make-agenda) (list 0))
+  ;; 最后被处理的 action 的时间
+  (define (current-time agenda) (car agenda))
+
+  ;; 待处理表的相关操作
+  (define (set-current-time! agenda time)
+    (set-car! agenda time))
+  (define (segments agenda) (cdr agenda))
+  (define (set-segments! agenda segments)
+    (set-cdr! agenda segments))
+  (define (first-segment agenda)
+    (car (segments agenda)))
+  (define (rest-segments agenda)
+    (cdr (segments agenda)))
+  (define (empty-agenda? agenda)
+    (null? (segments agenda)))
+
+  ;; 向待处理表中添加动作的处理逻辑
+  (define (add-to-agenda! time action agenda)
+    ;; 判断待处理表是否为空或待插入延迟时间小于序对中的时间
+    (define (belongs-before? segments)
+      (or (null? segments)
+          (< time
+             (segment-time (car segments)))))
+    ;; 构造一个新的时间段
+    (define (make-new-time-segment time action)
+      (let ((q (make-queue)))
+        (insert-queue! q action)
+        (make-time-segment time q)))
+    ;; 添加时间段到待处理表
+    (define (add-to-segments! segments)
+      (if (= (segment-time (car segments)) time)
+          ;; 时间合适则将 action 插入关联的队列中, 否则递归处理
+          (insert-queue!
+           (segment-queue (car segments))
+           action)
+          (let ((rest (cdr segments)))
+            (if (belongs-before? rest)
+                ;; 延迟时间小于待处理表中的时间则新构造一个时间段将其插入当前位置
+                (set-cdr!
+                 segments
+                 (cons (make-new-time-segment time action)
+                       (cdr segments)))
+                (add-to-segments! rest)))))
+    (let ((segments (segments agenda)))
+      (if (belongs-before? segments)
+          (set-segments!
+           agenda
+           (cons (make-new-time-segment time action)
+                 segments))
+          (add-to-segments! segments))))
+
+  ;; 删除待处理表中的第一项
+  (define (remove-first-agenda-item! agenda)
+  (let ((q (segment-queue
+            (first-segment agenda))))
+    (delete-queue! q)
+    ;; 如果删除后队列为空则删除此时间段
+    (if (empty-queue? q)
+        (set-segments!
+         agenda
+         (rest-segments agenda)))))
+
+  ;; 获取待处理表的第一项时直接取第一个时间段队列中的第一项, 同时需要更新待处理表的当前时间
+  (define (first-agenda-item agenda)
+    (if (empty-agenda? agenda)
+        (error "Agenda is empty: FIRST-AGENDA-ITEM")
+        (let ((first-seg (first-segment agenda)))
+          (set-current-time! agenda (segment-time first-seg))
+          (front-queue (segment-queue first-seg)))))
+
+*练习 3.32*
+--------------
+
+参照与门的实现, 当输入从 0, 1 变为 1, 0 时, 则 `a1` 变为 1, 经 `logical-and` 对 `a1`, `a2` 运算后, `new-value` 为 1, 经过 `after-delay` 处理后, `and-action-procedure` 被插入 `segment` 中; 然后 `a2` 变为 0, 经 `logical-and` 对 `a1`, `a2` 运算后, `new-value` 为 0, 经过 `after-delay` 处理后, `and-action-procedure` 被插入 `segment` 中。
+
+运行 `propogate` 时如果是先入先出的次序, 则依次对 `output` 赋值为 1, 0, 最后 `output` 值为 0；如果是后入先出的次序, 则依次对 `output` 赋值为 0, 1, 最后 `output` 值为 1。
+
+显然, 如果采用后入先出的次序, 信号值将会出现不正确的情况。
